@@ -1,6 +1,6 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { DATABASE_CONNECTION } from 'src/database/database-connection';
-import * as schema from './schema';
+import * as schema from './users.schema';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { CreateUserRequest } from './dto/create-user.request';
 import { eq } from 'drizzle-orm';

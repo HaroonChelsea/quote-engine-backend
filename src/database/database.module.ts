@@ -2,8 +2,22 @@ import { Module } from '@nestjs/common';
 import { DATABASE_CONNECTION } from './database-connection';
 import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
-import * as userSchema from '../users/schema';
+import * as userSchema from '../users/users.schema';
+import * as customerSchema from '../customers/customers.schema';
+import * as shopifySchema from '../products/products.schema';
+import * as quoteSchema from '../quotes/quotes.schema';
+import * as optionSchema from '../options/options.schema';
+import * as productOptionSchema from '../products/product-options.schema';
 import { drizzle } from 'drizzle-orm/node-postgres';
+
+export const fullSchema = {
+  ...userSchema,
+  ...customerSchema,
+  ...shopifySchema,
+  ...quoteSchema,
+  ...optionSchema,
+  ...productOptionSchema,
+};
 
 @Module({
   providers: [
@@ -14,7 +28,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
           connectionString: configService.getOrThrow('DATABASE_URL'),
         });
         return drizzle(pool, {
-          schema: { ...userSchema },
+          schema: fullSchema,
         });
       },
       inject: [ConfigService],
