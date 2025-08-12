@@ -5,6 +5,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { and, eq, ilike, SQL, sql } from 'drizzle-orm';
 import { FindProductsDto } from './dto/find-products.dto';
 import { fullSchema } from 'src/database/database.module';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
@@ -114,5 +115,35 @@ export class ProductsService {
       .insert(fullSchema.productOptions)
       .values(links)
       .onConflictDoNothing();
+  }
+
+  async update(id: number, dto: UpdateProductDto) {
+    const valuesToUpdate: Partial<{
+      title: string;
+      basePrice: string;
+      description: string;
+    }> = {};
+    if (dto.title) valuesToUpdate.title = dto.title;
+    if (dto.description) valuesToUpdate.description = dto.description;
+    if (dto.basePrice) valuesToUpdate.basePrice = dto.basePrice.toString();
+
+    const [updatedProduct] = await this.database
+      .update(fullSchema.products)
+      .set(valuesToUpdate)
+      .where(eq(fullSchema.products.id, id))
+      .returning();
+
+    if (!updatedProduct) throw new NotFoundException('Product not found');
+    return updatedProduct;
+  }
+
+  async remove(id: number) {
+    const [deletedProduct] = await this.database
+      .delete(fullSchema.products)
+      .where(eq(fullSchema.products.id, id))
+      .returning();
+
+    if (!deletedProduct) throw new NotFoundException('Product not found');
+    return { message: 'Product deleted successfully' };
   }
 }
