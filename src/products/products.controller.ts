@@ -37,6 +37,30 @@ export class ProductsController {
     return this.productsService.findOne(Number(id));
   }
 
+  @Get(':id/dimensions/:type')
+  getProductDimensions(@Param('id') id: string, @Param('type') type: string) {
+    return this.productsService.getProductDimensionsByType(Number(id), type);
+  }
+
+  @Post(':id/dimensions')
+  createProductDimension(@Param('id') id: string, @Body() dimensionData: any) {
+    return this.productsService.createProductDimension(Number(id), dimensionData);
+  }
+
+  @Patch(':id/dimensions/:dimensionId')
+  updateProductDimension(
+    @Param('id') id: string,
+    @Param('dimensionId') dimensionId: string,
+    @Body() dimensionData: any
+  ) {
+    return this.productsService.updateProductDimension(Number(id), Number(dimensionId), dimensionData);
+  }
+
+  @Delete(':id/dimensions/:dimensionId')
+  deleteProductDimension(@Param('id') id: string, @Param('dimensionId') dimensionId: string) {
+    return this.productsService.deleteProductDimension(Number(id), Number(dimensionId));
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
     return this.productsService.update(Number(id), updateProductDto);

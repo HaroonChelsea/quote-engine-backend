@@ -15,6 +15,13 @@
       "when": 1754951548175,
       "tag": "0001_nostalgic_paladin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1755892419596,
+      "tag": "0002_special_gargoyle",
+      "breakpoints": true
     }
   ]
 }

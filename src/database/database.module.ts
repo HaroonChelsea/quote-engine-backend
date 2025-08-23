@@ -8,6 +8,7 @@ import * as shopifySchema from '../products/products.schema';
 import * as quoteSchema from '../quotes/quotes.schema';
 import * as optionSchema from '../options/options.schema';
 import * as productOptionSchema from '../products/product-options.schema';
+import * as productDimensionsSchema from '../products/product-dimensions.schema';
 import { drizzle } from 'drizzle-orm/node-postgres';
 
 export const fullSchema = {
@@ -17,6 +18,7 @@ export const fullSchema = {
   ...quoteSchema,
   ...optionSchema,
   ...productOptionSchema,
+  ...productDimensionsSchema,
 };
 
 @Module({

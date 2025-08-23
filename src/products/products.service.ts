@@ -2,7 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../database/database-connection';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { CreateProductDto } from './dto/create-product.dto';
-import { and, eq, ilike, SQL, sql } from 'drizzle-orm';
+import { and, eq, ilike, SQL, sql, inArray } from 'drizzle-orm';
 import { FindProductsDto } from './dto/find-products.dto';
 import { fullSchema } from 'src/database/database.module';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -15,11 +15,17 @@ export class ProductsService {
   ) {}
 
   async create(dto: CreateProductDto) {
-    const { optionIds, ...productData } = dto;
+    const { dimensions, ...productData } = dto;
 
     const valuesToInsert = {
       ...productData,
       basePrice: dto.basePrice.toString(),
+      weightKg: dto.weightKg?.toString(),
+      lengthCm: dto.lengthCm?.toString(),
+      widthCm: dto.widthCm?.toString(),
+      heightCm: dto.heightCm?.toString(),
+      volumeCbm: dto.volumeCbm?.toString(),
+      goodsValue: dto.goodsValue?.toString(),
     };
 
     const [newProduct] = await this.database
@@ -27,11 +33,30 @@ export class ProductsService {
       .values(valuesToInsert)
       .returning();
 
-    if (optionIds && optionIds.length > 0) {
-      await this.linkOptionsToProduct(newProduct.id, optionIds);
+    // Handle dimensions if provided
+    if (dimensions && dimensions.length > 0) {
+      await this.createProductDimensions(newProduct.id, dimensions);
     }
 
     return this.findOne(newProduct.id);
+  }
+
+  async createProductDimensions(productId: number, dimensions: any[]) {
+    const dimensionValues = dimensions.map((dim) => ({
+      productId,
+      name: dim.name,
+      type: dim.type,
+      quantity: dim.quantity || 1,
+      weightKg: dim.weightKg.toString(),
+      lengthCm: dim.lengthCm.toString(),
+      widthCm: dim.widthCm.toString(),
+      heightCm: dim.heightCm.toString(),
+      volumeCbm: dim.volumeCbm?.toString(),
+    }));
+
+    return this.database
+      .insert(fullSchema.productDimensions)
+      .values(dimensionValues);
   }
 
   // This method was missing the implementation
@@ -49,12 +74,16 @@ export class ProductsService {
     const dataPromise = whereClause
       ? this.database.query.products.findMany({
           where: whereClause,
-          with: { productOptions: { with: { option: true } } },
+          with: {
+            productOptions: { with: { option: { with: { group: true } } } },
+          },
           limit: limit,
           offset: offset,
         })
       : this.database.query.products.findMany({
-          with: { productOptions: { with: { option: true } } },
+          with: {
+            productOptions: { with: { option: { with: { group: true } } } },
+          },
           limit: limit,
           offset: offset,
         });
@@ -66,11 +95,56 @@ export class ProductsService {
 
     const [data, total] = await Promise.all([dataPromise, totalPromise]);
 
+    // Get dimensions for all products
+    const productIds = data.map((p) => p.id);
+    const allDimensions =
+      productIds.length > 0
+        ? await this.database.query.productDimensions.findMany({
+            where: inArray(fullSchema.productDimensions.productId, productIds),
+          })
+        : [];
+
+    const dimensionsByProductId = allDimensions.reduce(
+      (acc, dim) => {
+        if (dim.productId && !acc[dim.productId]) {
+          acc[dim.productId] = [];
+        }
+        if (dim.productId) {
+          acc[dim.productId].push(dim);
+        }
+        return acc;
+      },
+      {} as Record<number, any[]>,
+    );
+
+    // Group options by their group name for each product
+    const productsWithGroupedOptions = data.map((product) => {
+      const groupedOptions = product.productOptions.reduce((acc, po) => {
+        const groupName = po.option.group.name;
+        if (!acc[groupName]) {
+          acc[groupName] = {
+            type: po.option.group.type,
+            items: [],
+          };
+        }
+        acc[groupName].items.push(po.option);
+        return acc;
+      }, {});
+
+      // Remove the flat productOptions array and add the grouped options
+      const { productOptions, ...productWithoutOptions } = product;
+      return {
+        ...productWithoutOptions,
+        options: groupedOptions,
+        dimensions: dimensionsByProductId[product.id] || [],
+      };
+    });
+
     const totalItems = Number(total[0].count);
     const totalPages = Math.ceil(totalItems / limit);
 
     return {
-      data,
+      data: productsWithGroupedOptions,
       meta: {
         totalItems,
         itemCount: data.length,
@@ -94,6 +168,11 @@ export class ProductsService {
       throw new NotFoundException('Product not found');
     }
 
+    // Get product dimensions
+    const dimensions = await this.database.query.productDimensions.findMany({
+      where: eq(fullSchema.productDimensions.productId, id),
+    });
+
     const groupedOptions = product.productOptions.reduce((acc, po) => {
       const groupName = po.option.group.name;
       if (!acc[groupName]) {
@@ -106,15 +185,35 @@ export class ProductsService {
       return acc;
     }, {});
 
-    return { ...product, options: groupedOptions };
+    return { ...product, options: groupedOptions, dimensions };
   }
 
   async linkOptionsToProduct(productId: number, optionIds: number[]) {
-    const links = optionIds.map((optionId) => ({ productId, optionId }));
-    return this.database
-      .insert(fullSchema.productOptions)
-      .values(links)
-      .onConflictDoNothing();
+    // First, delete existing links for this product
+    await this.database
+      .delete(fullSchema.productOptions)
+      .where(eq(fullSchema.productOptions.productId, productId));
+
+    // Then insert new links
+    if (optionIds.length > 0) {
+      const links = optionIds.map((optionId) => ({ productId, optionId }));
+      const result = await this.database
+        .insert(fullSchema.productOptions)
+        .values(links)
+        .returning();
+
+      return {
+        message: `Successfully linked ${result.length} options to product`,
+        linkedCount: result.length,
+        optionIds: result.map((r) => r.optionId),
+      };
+    }
+
+    return {
+      message: 'No options to link',
+      linkedCount: 0,
+      optionIds: [],
+    };
   }
 
   async update(id: number, dto: UpdateProductDto) {
@@ -145,5 +244,81 @@ export class ProductsService {
 
     if (!deletedProduct) throw new NotFoundException('Product not found');
     return { message: 'Product deleted successfully' };
+  }
+
+  async getProductDimensionsByType(productId: number, type: string) {
+    const dimensions = await this.database.query.productDimensions.findMany({
+      where: and(
+        eq(fullSchema.productDimensions.productId, productId),
+        eq(fullSchema.productDimensions.type, type),
+      ),
+    });
+
+    return dimensions;
+  }
+
+  async createProductDimension(productId: number, dimensionData: any) {
+    const [newDimension] = await this.database
+      .insert(fullSchema.productDimensions)
+      .values({
+        productId,
+        name: dimensionData.name,
+        type: dimensionData.type,
+        quantity: dimensionData.quantity,
+        weightKg: dimensionData.weightKg.toString(),
+        lengthCm: dimensionData.lengthCm.toString(),
+        widthCm: dimensionData.widthCm.toString(),
+        heightCm: dimensionData.heightCm.toString(),
+        volumeCbm: dimensionData.volumeCbm?.toString(),
+      })
+      .returning();
+
+    return newDimension;
+  }
+
+  async updateProductDimension(productId: number, dimensionId: number, dimensionData: any) {
+    const [updatedDimension] = await this.database
+      .update(fullSchema.productDimensions)
+      .set({
+        name: dimensionData.name,
+        type: dimensionData.type,
+        quantity: dimensionData.quantity,
+        weightKg: dimensionData.weightKg.toString(),
+        lengthCm: dimensionData.lengthCm.toString(),
+        widthCm: dimensionData.widthCm.toString(),
+        heightCm: dimensionData.heightCm.toString(),
+        volumeCbm: dimensionData.volumeCbm?.toString(),
+      })
+      .where(
+        and(
+          eq(fullSchema.productDimensions.id, dimensionId),
+          eq(fullSchema.productDimensions.productId, productId)
+        )
+      )
+      .returning();
+
+    if (!updatedDimension) {
+      throw new NotFoundException('Product dimension not found');
+    }
+
+    return updatedDimension;
+  }
+
+  async deleteProductDimension(productId: number, dimensionId: number) {
+    const [deletedDimension] = await this.database
+      .delete(fullSchema.productDimensions)
+      .where(
+        and(
+          eq(fullSchema.productDimensions.id, dimensionId),
+          eq(fullSchema.productDimensions.productId, productId)
+        )
+      )
+      .returning();
+
+    if (!deletedDimension) {
+      throw new NotFoundException('Product dimension not found');
+    }
+
+    return { message: 'Product dimension deleted successfully' };
   }
 }
