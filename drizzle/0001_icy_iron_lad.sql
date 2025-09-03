@@ -1,0 +1,1 @@
+ALTER TABLE "quote_options" ADD COLUMN "id" serial PRIMARY KEY NOT NULL;

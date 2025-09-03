@@ -1,6 +1,6 @@
 {
-  "id": "ef718bc0-d1c3-4c3f-925d-df7008e4cdec",
-  "prevId": "5030748f-ee90-4589-a8fb-77deb881ebf7",
+  "id": "e8de8f01-1e00-40d4-bc97-73b69fd10476",
+  "prevId": "fb069a2c-8ee0-4cd5-92a1-d9a9bed03e3f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -184,6 +184,101 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.product_dimensions": {
+      "name": "product_dimensions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "product_id": {
+          "name": "product_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 1
+        },
+        "weight_kg": {
+          "name": "weight_kg",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "length_cm": {
+          "name": "length_cm",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "width_cm": {
+          "name": "width_cm",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "height_cm": {
+          "name": "height_cm",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "volume_cbm": {
+          "name": "volume_cbm",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "product_dimensions_product_id_products_id_fk": {
+          "name": "product_dimensions_product_id_products_id_fk",
+          "tableFrom": "product_dimensions",
+          "tableTo": "products",
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.product_options": {
       "name": "product_options",
       "schema": "",
@@ -291,6 +386,42 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
+        },
+        "shopify_id": {
+          "name": "shopify_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "weight_kg": {
+          "name": "weight_kg",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "length_cm": {
+          "name": "length_cm",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "width_cm": {
+          "name": "width_cm",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "height_cm": {
+          "name": "height_cm",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "volume_cbm": {
+          "name": "volume_cbm",
+          "type": "numeric(8, 4)",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -305,6 +436,12 @@
       "name": "quote_options",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
         "quote_id": {
           "name": "quote_id",
           "type": "integer",

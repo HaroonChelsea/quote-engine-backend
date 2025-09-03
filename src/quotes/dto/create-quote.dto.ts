@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsNumber,
   IsObject,
+  IsOptional,
   IsString,
   ValidateNested,
 } from 'class-validator';
@@ -43,6 +44,74 @@ class CustomerInfoDto {
   @IsString()
   @IsNotEmpty()
   zip: string;
+
+  @IsString()
+  @IsOptional()
+  country?: string;
+}
+
+class SelectedOptionDto {
+  @IsNumber()
+  id: number;
+
+  @IsString()
+  name: string;
+
+  @IsString()
+  price: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+}
+
+class SelectedProductDto {
+  @IsNumber()
+  id: number;
+
+  @IsString()
+  title: string;
+
+  @IsString()
+  basePrice: string;
+
+  @IsNumber()
+  quantity: number;
+
+  @IsString()
+  unitType: string;
+
+  @IsNumber()
+  unitQuantity: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SelectedOptionDto)
+  selectedOptions: SelectedOptionDto[];
+}
+
+class ShippingInfoDto {
+  @IsString()
+  @IsOptional()
+  method?: string;
+
+  @IsString()
+  @IsOptional()
+  cost?: string;
+
+  @IsString()
+  @IsOptional()
+  estimatedDays?: string;
+}
+
+class EmailMessageDto {
+  @IsString()
+  @IsNotEmpty()
+  subject: string;
+
+  @IsString()
+  @IsNotEmpty()
+  message: string;
 }
 
 export class CreateQuoteDto {
@@ -51,10 +120,24 @@ export class CreateQuoteDto {
   @Type(() => CustomerInfoDto)
   customerInfo: CustomerInfoDto;
 
-  @IsNumber()
-  productId: number;
-
   @IsArray()
-  @IsNumber({}, { each: true })
-  optionIds: number[];
+  @ValidateNested({ each: true })
+  @Type(() => SelectedProductDto)
+  selectedProducts: SelectedProductDto[];
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ShippingInfoDto)
+  @IsOptional()
+  shippingInfo?: ShippingInfoDto;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => EmailMessageDto)
+  @IsOptional()
+  emailMessage?: EmailMessageDto;
+
+  @IsNumber()
+  @IsOptional()
+  createdBy?: number;
 }

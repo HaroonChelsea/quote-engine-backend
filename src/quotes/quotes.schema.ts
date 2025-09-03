@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { customers } from 'src/customers/customers.schema';
+import { options } from 'src/options/options.schema';
 
 export const quoteStatusEnum = pgEnum('quote_status', [
   'DRAFT',
@@ -32,6 +33,7 @@ export const quotes = pgTable('quotes', {
 });
 
 export const quoteOptions = pgTable('quote_options', {
+  id: serial('id').primaryKey(),
   quoteId: integer('quote_id')
     .references(() => quotes.id)
     .notNull(),
@@ -45,4 +47,15 @@ export const quotesRelations = relations(quotes, ({ one, many }) => ({
     references: [customers.id],
   }),
   selectedOptions: many(quoteOptions),
+}));
+
+export const quoteOptionsRelations = relations(quoteOptions, ({ one }) => ({
+  quote: one(quotes, {
+    fields: [quoteOptions.quoteId],
+    references: [quotes.id],
+  }),
+  option: one(options, {
+    fields: [quoteOptions.optionId],
+    references: [options.id],
+  }),
 }));

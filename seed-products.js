@@ -6,7 +6,6 @@ const productData = [
     title: '1 Person Booth',
     description: 'Compact single-person workspace',
     basePrice: 2999.0,
-    goodsValue: 1020.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -41,7 +40,6 @@ const productData = [
     title: 'Zoom Room',
     description: 'Professional meeting space',
     basePrice: 5999.0,
-    goodsValue: 1100.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -76,7 +74,6 @@ const productData = [
     title: '6 Person Pod',
     description: 'Collaborative workspace for 6 people',
     basePrice: 8999.0,
-    goodsValue: 1752.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -111,7 +108,6 @@ const productData = [
     title: 'Backyard Office Pod (XL/7x7)',
     description: 'Large backyard office space',
     basePrice: 12999.0,
-    goodsValue: 3200.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -155,7 +151,6 @@ const productData = [
     title: 'Home Pod',
     description: 'Compact home office solution',
     basePrice: 3999.0,
-    goodsValue: 1000.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -181,7 +176,6 @@ const productData = [
     title: 'Meeting Room',
     description: 'Professional meeting room setup',
     basePrice: 7999.0,
-    goodsValue: 1100.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -207,7 +201,6 @@ const productData = [
     title: '2 Person Booth',
     description: 'Dual workspace configuration',
     basePrice: 3999.0,
-    goodsValue: 1100.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -242,7 +235,6 @@ const productData = [
     title: '4 Person Pod',
     description: 'Medium-sized collaborative space',
     basePrice: 6999.0,
-    goodsValue: 1355.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -286,7 +278,6 @@ const productData = [
     title: '8 Person Pod',
     description: 'Large collaborative workspace',
     basePrice: 11999.0,
-    goodsValue: 3200.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -339,7 +330,6 @@ const productData = [
     title: 'Backyard Office Pod (L/5x7)',
     description: 'Medium backyard office space',
     basePrice: 9999.0,
-    goodsValue: 2700.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -383,7 +373,6 @@ const productData = [
     title: '8-10 Person Backyard Office Pod',
     description: 'Large backyard office for 8-10 people',
     basePrice: 15999.0,
-    goodsValue: 3820.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -427,7 +416,6 @@ const productData = [
     title: 'Nursing Pod M',
     description: 'Medium nursing pod for healthcare facilities',
     basePrice: 5999.0,
-    goodsValue: 1100.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -453,7 +441,6 @@ const productData = [
     title: 'Nursing Pod L',
     description: 'Large nursing pod for healthcare facilities',
     basePrice: 7999.0,
-    goodsValue: 1355.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -479,7 +466,6 @@ const productData = [
     title: 'Nursing Pod XL ADA',
     description: 'Extra large ADA-compliant nursing pod',
     basePrice: 8999.0,
-    goodsValue: 1355.0,
     dimensions: [
       {
         name: 'Pallet 1',
@@ -527,19 +513,19 @@ async function seedProducts() {
 
       // Insert product
       const productResult = await pool.query(
-        `INSERT INTO products (title, description, base_price, goods_value, weight_kg, length_cm, width_cm, height_cm, volume_cbm)
+        `INSERT INTO products (title, description, base_price, weight_kg, length_cm, width_cm, height_cm, volume_cbm, is_active)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id`,
         [
           productInfo.title,
           productInfo.description,
           productInfo.basePrice.toString(),
-          productInfo.goodsValue.toString(),
           totalWeight.toString(),
           maxLength.toString(),
           maxWidth.toString(),
           maxHeight.toString(),
           ((maxLength * maxWidth * maxHeight) / 1000000).toString(),
+          'true', // is_active
         ],
       );
 

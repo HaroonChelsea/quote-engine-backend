@@ -24,7 +24,7 @@ export const products = pgTable('products', {
   widthCm: numeric('width_cm', { precision: 8, scale: 2 }),
   heightCm: numeric('height_cm', { precision: 8, scale: 2 }),
   volumeCbm: numeric('volume_cbm', { precision: 8, scale: 4 }),
-  goodsValue: numeric('goods_value', { precision: 10, scale: 2 }),
+  // Shipping options will be handled through product options (shipping group)
 });
 
 export const productsRelations = relations(products, ({ many }) => ({

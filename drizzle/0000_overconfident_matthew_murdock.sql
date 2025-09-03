@@ -29,6 +29,20 @@ CREATE TABLE "options" (
 	"price" numeric(10, 2) DEFAULT '0' NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "product_dimensions" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"product_id" integer,
+	"name" text NOT NULL,
+	"type" text NOT NULL,
+	"quantity" integer DEFAULT 1,
+	"weight_kg" numeric(8, 2) NOT NULL,
+	"length_cm" numeric(8, 2) NOT NULL,
+	"width_cm" numeric(8, 2) NOT NULL,
+	"height_cm" numeric(8, 2) NOT NULL,
+	"volume_cbm" numeric(8, 4),
+	"created_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
 CREATE TABLE "product_options" (
 	"product_id" integer NOT NULL,
 	"option_id" integer NOT NULL,
@@ -42,7 +56,13 @@ CREATE TABLE "products" (
 	"base_price" numeric(10, 2) NOT NULL,
 	"image_url" text,
 	"is_active" boolean DEFAULT true,
-	"created_at" timestamp DEFAULT now()
+	"created_at" timestamp DEFAULT now(),
+	"shopify_id" text,
+	"weight_kg" numeric(8, 2),
+	"length_cm" numeric(8, 2),
+	"width_cm" numeric(8, 2),
+	"height_cm" numeric(8, 2),
+	"volume_cbm" numeric(8, 4)
 );
 --> statement-breakpoint
 CREATE TABLE "quote_options" (
@@ -62,8 +82,25 @@ CREATE TABLE "quotes" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
+CREATE TABLE "roles" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	CONSTRAINT "roles_name_unique" UNIQUE("name")
+);
+--> statement-breakpoint
+CREATE TABLE "users" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"email" text NOT NULL,
+	"password" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"role_id" integer,
+	CONSTRAINT "users_email_unique" UNIQUE("email")
+);
+--> statement-breakpoint
 ALTER TABLE "options" ADD CONSTRAINT "options_group_id_option_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."option_groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "product_dimensions" ADD CONSTRAINT "product_dimensions_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "product_options" ADD CONSTRAINT "product_options_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "product_options" ADD CONSTRAINT "product_options_option_id_options_id_fk" FOREIGN KEY ("option_id") REFERENCES "public"."options"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quote_options" ADD CONSTRAINT "quote_options_quote_id_quotes_id_fk" FOREIGN KEY ("quote_id") REFERENCES "public"."quotes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "quotes" ADD CONSTRAINT "quotes_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "quotes" ADD CONSTRAINT "quotes_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_role_id_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."roles"("id") ON DELETE no action ON UPDATE no action;
