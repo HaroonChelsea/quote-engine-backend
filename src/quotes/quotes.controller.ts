@@ -6,6 +6,7 @@ import {
   Param,
   Res,
   Patch,
+  Delete,
   NotFoundException,
 } from '@nestjs/common';
 import { QuotesService } from './quotes.service';
@@ -66,6 +67,22 @@ export class QuotesController {
     @Param('id') id: string,
     @Body() body: { subject: string; message: string },
   ) {
-    return this.quotesService.sendQuoteEmail(Number(id));
+    return this.quotesService.sendQuoteEmail(Number(id), body);
+  }
+
+  @Delete(':id')
+  async deleteQuote(@Param('id') id: string) {
+    return this.quotesService.deleteQuote(Number(id));
+  }
+
+  @Post('test-email')
+  async testEmail(
+    @Body() body: { to: string; subject?: string; message?: string },
+  ) {
+    return this.quotesService.testEmailConnection(
+      body.to,
+      body.subject,
+      body.message,
+    );
   }
 }

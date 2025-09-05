@@ -23,6 +23,7 @@ export const productDimensions = pgTable('product_dimensions', {
   widthCm: numeric('width_cm', { precision: 8, scale: 2 }).notNull(),
   heightCm: numeric('height_cm', { precision: 8, scale: 2 }).notNull(),
   volumeCbm: numeric('volume_cbm', { precision: 8, scale: 4 }),
+  price: numeric('price', { precision: 10, scale: 2 }), // Optional price field for admin users
   createdAt: timestamp('created_at').defaultNow(),
 });
 

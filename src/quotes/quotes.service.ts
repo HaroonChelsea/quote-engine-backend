@@ -148,24 +148,32 @@ export class QuotesService {
     return updatedQuote;
   }
 
-  async sendQuoteEmail(quoteId: number) {
+  async sendQuoteEmail(
+    quoteId: number,
+    emailData?: { subject: string; message: string },
+  ) {
     const quote = await this.findQuoteById(quoteId);
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
-
-    const { customerInfo, emailMessage } = quote as any;
 
     try {
       // Generate PDF for the quote
       const pdfData = await this.generateQuotePdfData(quoteId);
       const pdfBuffer = await this.pdfService.generateQuotePdf(pdfData);
 
-      // For development, use mock email service
-      const result = await this.emailService.sendMockEmail(
-        customerInfo.email,
-        emailMessage.subject,
-        emailMessage.message,
+      // Prepare email content
+      const subject =
+        emailData?.subject ||
+        `Quote #${quoteId} - ${quote.customer?.companyName || 'Your Quote'}`;
+      const message =
+        emailData?.message || this.generateDefaultEmailMessage(quote, pdfData);
+
+      // Send real email
+      const result = await this.emailService.sendQuoteEmail(
+        quote.customer?.email || '',
+        subject,
+        message,
         pdfBuffer,
       );
 
@@ -176,6 +184,111 @@ export class QuotesService {
     } catch (error) {
       console.error('Failed to send quote email:', error);
       throw new Error(`Failed to send quote email: ${error.message}`);
+    }
+  }
+
+  private generateDefaultEmailMessage(quote: any, pdfData: any): string {
+    const customerName =
+      quote.customer?.firstName && quote.customer?.lastName
+        ? `${quote.customer.firstName} ${quote.customer.lastName}`
+        : 'Valued Customer';
+
+    const companyName = quote.customer?.companyName || 'Your Company';
+
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">
+          Quote #${quote.id} - ${companyName}
+        </h2>
+
+        <p>Dear ${customerName},</p>
+
+        <p>Thank you for your interest in our products and services. Please find attached your detailed quote.</p>
+
+        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #333; margin-top: 0;">Quote Summary</h3>
+          <p><strong>Quote Number:</strong> #${quote.id}</p>
+          <p><strong>Total Amount:</strong> $${parseFloat(quote.totalAmount || '0').toLocaleString()}</p>
+          <p><strong>Valid Until:</strong> ${pdfData.validUntil.toLocaleDateString()}</p>
+        </div>
+
+        <p>This quote is valid for 30 days from the date of issue. If you have any questions or need any modifications, please don't hesitate to contact us.</p>
+
+        <p>We look forward to working with you!</p>
+
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+          <p style="color: #666; font-size: 14px;">
+            Best regards,<br>
+            <strong>Your Sales Team</strong><br>
+            Thinktanks
+          </p>
+        </div>
+      </div>
+    `;
+  }
+
+  async deleteQuote(id: number) {
+    // First check if quote exists
+    const quote = await this.findQuoteById(id);
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    try {
+      // Delete quote options first (due to foreign key constraint)
+      await this.database
+        .delete(fullSchema.quoteOptions)
+        .where(eq(fullSchema.quoteOptions.quoteId, id));
+
+      // Delete the quote
+      await this.database
+        .delete(fullSchema.quotes)
+        .where(eq(fullSchema.quotes.id, id));
+
+      return { message: 'Quote deleted successfully', id };
+    } catch (error) {
+      console.error('Error deleting quote:', error);
+      throw new Error(`Failed to delete quote: ${error.message}`);
+    }
+  }
+
+  async testEmailConnection(to: string, subject?: string, message?: string) {
+    try {
+      const testSubject = subject || 'Test Email from Quote Engine';
+      const testMessage =
+        message ||
+        `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Test Email</h2>
+          <p>This is a test email from the Quote Engine system.</p>
+          <p>If you receive this email, the email functionality is working correctly!</p>
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+            <p style="color: #666; font-size: 14px;">
+              Best regards,<br>
+              <strong>Quote Engine System</strong>
+            </p>
+          </div>
+        </div>
+      `;
+
+      const result = await this.emailService.sendQuoteEmail(
+        to,
+        testSubject,
+        testMessage,
+      );
+
+      return {
+        success: true,
+        message: 'Test email sent successfully',
+        details: result,
+      };
+    } catch (error) {
+      console.error('Test email failed:', error);
+      return {
+        success: false,
+        message: error.message,
+        error: error,
+      };
     }
   }
 
