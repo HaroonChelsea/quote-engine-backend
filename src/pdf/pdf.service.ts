@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface QuotePdfData {
   quoteNumber: string;
@@ -48,7 +50,7 @@ export class PdfService {
 
   async generateQuotePdf(quoteData: QuotePdfData): Promise<Buffer> {
     try {
-      this.logger.log('Generating quote PDF...');
+      this.logger.log('Generating quote PDF with brand pages...');
 
       const browser = await puppeteer.launch({
         headless: true,
@@ -57,31 +59,131 @@ export class PdfService {
 
       const page = await browser.newPage();
 
-      // Generate HTML content for the quote
-      const htmlContent = this.generateQuoteHtml(quoteData);
+      // Generate brand pages HTML
+      const brandPagesHtml = this.generateBrandPagesHtml();
 
-      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+      // Generate quote content HTML
+      const quoteHtml = this.generateQuoteHtml(quoteData);
+
+      // Combine all content
+      const fullHtmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Quote ${quoteData.quoteNumber}</title>
+             <style>
+               html, body {
+                 margin: 0;
+                 padding: 0;
+                 width: 100%;
+                 height: 100%;
+               }
+               body {
+                 font-family: 'Arial', sans-serif;
+                 color: #333;
+               }
+               .page-break {
+                 page-break-before: always;
+               }
+               .brand-page {
+                 width: 100%;
+                 height: 100vh;
+                 display: flex;
+                 align-items: center;
+                 justify-content: center;
+                 background: white;
+                 page-break-after: always;
+               }
+               .brand-page img {
+                 max-width: 90%;
+                 max-height: 90%;
+                 width: auto;
+                 height: auto;
+                 object-fit: contain;
+                 display: block;
+               }
+             </style>
+          </head>
+          <body>
+            ${brandPagesHtml}
+            <div class="page-break"></div>
+            ${quoteHtml}
+          </body>
+        </html>
+      `;
+
+      await page.setContent(fullHtmlContent, { waitUntil: 'networkidle0' });
 
       // Generate PDF
       const pdfBuffer = await page.pdf({
         format: 'A4',
         printBackground: true,
         margin: {
-          top: '20mm',
-          right: '20mm',
-          bottom: '20mm',
-          left: '20mm',
+          top: '10mm',
+          right: '10mm',
+          bottom: '10mm',
+          left: '10mm',
         },
+        preferCSSPageSize: true,
       });
 
       await browser.close();
 
-      this.logger.log('Quote PDF generated successfully');
+      this.logger.log('Quote PDF with brand pages generated successfully');
       return Buffer.from(pdfBuffer);
     } catch (error) {
       this.logger.error('Failed to generate quote PDF:', error);
       throw new Error('Failed to generate PDF');
     }
+  }
+
+  private generateBrandPagesHtml(): string {
+    const brandImages = [
+      'Thinktanks_1.png',
+      'Thinktanks_2.png',
+      'Thinktanks_3.png',
+      'Thinktanks_5.png', // Note: Thinktanks_4.png is missing
+      'Thinktanks_6.png',
+    ];
+
+    // Add an extra page to make it 6 pages total
+    const allPages = [...brandImages]; // Duplicate first image for 6th page
+
+    return allPages
+      .map((imageName, index) => {
+        try {
+          const imagePath = path.join(
+            process.cwd(),
+            'src',
+            'assets',
+            imageName,
+          );
+          const imageBuffer = fs.readFileSync(imagePath);
+          const base64Image = imageBuffer.toString('base64');
+          const dataUrl = `data:image/png;base64,${base64Image}`;
+
+          return `
+          <div class="brand-page">
+            <img src="${dataUrl}" alt="Thinktanks Brand Page ${index + 1}" />
+          </div>
+        `;
+        } catch (error) {
+          this.logger.error(`Failed to load image ${imageName}:`, error);
+          // Fallback to a placeholder if image fails to load
+          return `
+          <div class="brand-page">
+            <div style="display: flex; align-items: center; justify-content: center; height: 100vh; background-color: #f0f0f0;">
+              <div style="text-align: center;">
+                <h2>Thinktanks Brand Page ${index + 1}</h2>
+                <p>Image: ${imageName}</p>
+              </div>
+            </div>
+          </div>
+        `;
+        }
+      })
+      .join('');
   }
 
   private generateQuoteHtml(quoteData: QuotePdfData): string {
@@ -174,14 +276,6 @@ export class PdfService {
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>QUOTE</h1>
-            <div class="company-info">
-              <h2>Your Company Name</h2>
-              <p>Professional Booth Solutions</p>
-            </div>
-          </div>
-
           <div class="quote-details">
             <div class="customer-info">
               <div class="section-title">Customer Information</div>

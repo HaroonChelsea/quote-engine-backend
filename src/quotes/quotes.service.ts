@@ -298,12 +298,53 @@ export class QuotesService {
       throw new NotFoundException('Quote not found');
     }
 
-    // For now, return mock data - you'll need to adapt this based on your actual data structure
+    // Get the quote options with their details
+    const quoteOptions = await this.database
+      .select({
+        id: fullSchema.quoteOptions.id,
+        optionId: fullSchema.quoteOptions.optionId,
+        price: fullSchema.quoteOptions.price,
+        optionTitle: fullSchema.options.title,
+        groupName: fullSchema.optionGroups.name,
+      })
+      .from(fullSchema.quoteOptions)
+      .leftJoin(
+        fullSchema.options,
+        eq(fullSchema.quoteOptions.optionId, fullSchema.options.id),
+      )
+      .leftJoin(
+        fullSchema.optionGroups,
+        eq(fullSchema.options.groupId, fullSchema.optionGroups.id),
+      )
+      .where(eq(fullSchema.quoteOptions.quoteId, quoteId));
+
+    // Get the product details
+    const product = await this.database
+      .select()
+      .from(fullSchema.products)
+      .where(eq(fullSchema.products.id, quote.productId))
+      .limit(1);
+
+    const productData = product[0];
+    if (!productData) {
+      throw new NotFoundException('Product not found');
+    }
+
+    // Calculate pricing
+    const basePrice = parseFloat(quote.basePrice || '0');
+    const optionsPrice = quoteOptions.reduce(
+      (sum, opt) => sum + parseFloat(opt.price || '0'),
+      0,
+    );
+    const subtotal = basePrice + optionsPrice;
+    const tax = subtotal * 0.08;
+    const finalTotal = subtotal + tax;
+
     return {
       quoteNumber: `Q-${quoteId}`,
       customerInfo: {
         name:
-          quote.customer?.firstName + ' ' + quote.customer?.lastName ||
+          `${quote.customer?.firstName || ''} ${quote.customer?.lastName || ''}`.trim() ||
           'Unknown',
         company: quote.customer?.companyName || 'Unknown Company',
         email: quote.customer?.email || 'unknown@email.com',
@@ -312,30 +353,33 @@ export class QuotesService {
         city: quote.customer?.city || 'Unknown',
         state: quote.customer?.state || 'Unknown',
         zip: quote.customer?.zip || 'Unknown',
-        country: 'US', // Default to US for now
+        country: 'US',
       },
       products: [
         {
-          title: 'Sample Product',
-          quantity: 1,
-          basePrice: parseFloat(quote.basePrice || '0'),
-          options: [],
-          totalPrice: parseFloat(quote.totalAmount || '0'),
+          title: productData.title,
+          quantity: 1, // Default quantity, you might want to store this in the quote
+          basePrice: basePrice,
+          options: quoteOptions.map((opt) => ({
+            title: `${opt.groupName}: ${opt.optionTitle}`,
+            price: parseFloat(opt.price || '0'),
+          })),
+          totalPrice: subtotal,
         },
       ],
       shippingInfo: {
         origin: 'NO.12 HUASHAN RD, SHILOU TOWN, PANYU DISTRICT, GUANGZHOU',
-        destination: 'Customer Address',
+        destination: `${quote.customer?.city || 'Unknown'}, ${quote.customer?.state || 'Unknown'}`,
         method: 'Standard Shipping',
         estimatedCost: 0,
         transitTime: '5-10 business days',
       },
       pricing: {
-        subtotal: parseFloat(quote.basePrice || '0'),
+        subtotal: subtotal,
         shipping: 0,
-        total: parseFloat(quote.totalAmount || '0'),
-        tax: parseFloat(quote.totalAmount || '0') * 0.08,
-        finalTotal: parseFloat(quote.totalAmount || '0') * 1.08,
+        total: subtotal,
+        tax: tax,
+        finalTotal: finalTotal,
       },
       createdAt: quote.createdAt || new Date(),
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
