@@ -8,6 +8,7 @@ import {
   Patch,
   Delete,
   NotFoundException,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { QuotesService } from './quotes.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
@@ -84,5 +85,23 @@ export class QuotesController {
       body.subject,
       body.message,
     );
+  }
+
+  @Post(':id/sync-shopify')
+  async syncQuoteWithShopify(@Param('id', ParseIntPipe) id: number) {
+    try {
+      const success = await this.quotesService.syncQuoteWithShopify(id);
+      return {
+        success,
+        message: success
+          ? 'Quote successfully synced with Shopify'
+          : 'Failed to sync quote with Shopify',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Error syncing quote: ${error.message}`,
+      };
+    }
   }
 }

@@ -19,6 +19,13 @@ export const quoteStatusEnum = pgEnum('quote_status', [
   'INVOICED',
 ]);
 
+export const shopifySyncStatusEnum = pgEnum('shopify_sync_status', [
+  'PENDING',
+  'SYNCED',
+  'FAILED',
+  'SKIPPED',
+]);
+
 export const quotes = pgTable('quotes', {
   id: serial('id').primaryKey(),
   customerId: integer('customer_id')
@@ -30,6 +37,21 @@ export const quotes = pgTable('quotes', {
   optionsPrice: numeric('options_price', { precision: 10, scale: 2 }),
   totalAmount: numeric('total_amount', { precision: 10, scale: 2 }),
   createdAt: timestamp('created_at').defaultNow(),
+
+  // Shipping information
+  shippingMethod: text('shipping_method'),
+  shippingCost: numeric('shipping_cost', { precision: 10, scale: 2 }),
+  shippingEstimatedDays: text('shipping_estimated_days'),
+
+  // Shopify integration fields
+  shopifyDraftOrderId: text('shopify_draft_order_id'),
+  shopifyCustomerId: text('shopify_customer_id'),
+  shopifyVariantId: text('shopify_variant_id'),
+  shopifySyncStatus: shopifySyncStatusEnum('shopify_sync_status').default(
+    'PENDING',
+  ),
+  shopifySyncError: text('shopify_sync_error'),
+  shopifySyncedAt: timestamp('shopify_synced_at'),
 });
 
 export const quoteOptions = pgTable('quote_options', {

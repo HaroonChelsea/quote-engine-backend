@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../database/database-connection';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { CreateQuoteDto } from './dto/create-quote.dto';
@@ -6,14 +6,20 @@ import { eq } from 'drizzle-orm';
 import { fullSchema } from 'src/database/database.module';
 import { EmailService } from '../email/email.service';
 import { PdfService, QuotePdfData } from '../pdf/pdf.service';
+import { ShopifyService } from '../shopify/shopify.service';
+import { ShopifyMappingService } from '../shopify/shopify-mapping.service';
 
 @Injectable()
 export class QuotesService {
+  private readonly logger = new Logger(QuotesService.name);
+
   constructor(
     @Inject(DATABASE_CONNECTION)
     private readonly database: NodePgDatabase<typeof fullSchema>,
     private readonly emailService: EmailService,
     private readonly pdfService: PdfService,
+    private readonly shopifyService: ShopifyService,
+    private readonly shopifyMappingService: ShopifyMappingService,
   ) {}
 
   async createQuote(dto: CreateQuoteDto) {
@@ -55,15 +61,19 @@ export class QuotesService {
       }
 
       // Calculate total amount from selected products
-      const totalAmount = dto.selectedProducts.reduce((sum, product) => {
-        const productTotal =
+      const productTotal = dto.selectedProducts.reduce((sum, product) => {
+        const productAmount =
           parseFloat(product.basePrice) +
           product.selectedOptions.reduce(
             (optSum, opt) => optSum + parseFloat(opt.price),
             0,
           );
-        return sum + productTotal * product.quantity;
+        return sum + productAmount * product.quantity;
       }, 0);
+
+      // Add shipping cost to total
+      const shippingCost = parseFloat(dto.shippingInfo?.cost || '0');
+      const totalAmount = productTotal + shippingCost;
 
       // Create the quote
       const [newQuote] = await this.database
@@ -77,6 +87,10 @@ export class QuotesService {
             .reduce((sum, opt) => sum + parseFloat(opt.price), 0)
             .toString(),
           totalAmount: totalAmount.toFixed(2),
+          // Store shipping information
+          shippingMethod: dto.shippingInfo?.method,
+          shippingCost: dto.shippingInfo?.cost,
+          shippingEstimatedDays: dto.shippingInfo?.estimatedDays,
         })
         .returning();
 
@@ -97,6 +111,73 @@ export class QuotesService {
       console.log(
         `Created quote with ID: ${newQuote.id} for customer: ${customerId}`,
       );
+
+      // Shopify Integration - Create customer, find variant, and create draft order
+      try {
+        this.logger.log(
+          `Starting Shopify integration for quote ${newQuote.id}`,
+        );
+
+        // 1. Create or find Shopify customer
+        const shopifyCustomerId = await this.createShopifyCustomer(
+          dto.customerInfo,
+        );
+
+        // 2. Find matching Shopify variant
+        const variantMatch = await this.findMatchingShopifyVariant(
+          dto.selectedProducts[0].id,
+          dto.selectedProducts[0].selectedOptions,
+        );
+
+        // 3. Create Shopify draft order if we have both customer and variant
+        let shopifyDraftOrderId: string | null = null;
+        if (shopifyCustomerId && variantMatch) {
+          shopifyDraftOrderId = await this.createShopifyDraftOrder(
+            shopifyCustomerId,
+            variantMatch.variantId,
+            dto.selectedProducts[0].quantity,
+            variantMatch.price,
+            dto.shippingInfo,
+          );
+        }
+
+        // 4. Update quote with Shopify data
+        const shopifyUpdateData: any = {
+          shopifySyncStatus: 'SYNCED',
+          shopifySyncedAt: new Date(),
+          shopifySyncError: null,
+        };
+
+        if (shopifyCustomerId)
+          shopifyUpdateData.shopifyCustomerId = shopifyCustomerId;
+        if (shopifyDraftOrderId)
+          shopifyUpdateData.shopifyDraftOrderId = shopifyDraftOrderId;
+        if (variantMatch)
+          shopifyUpdateData.shopifyVariantId = variantMatch.variantId;
+
+        await this.database
+          .update(fullSchema.quotes)
+          .set(shopifyUpdateData)
+          .where(eq(fullSchema.quotes.id, newQuote.id));
+
+        this.logger.log(
+          `Successfully integrated quote ${newQuote.id} with Shopify`,
+        );
+      } catch (shopifyError) {
+        this.logger.error(
+          `Shopify integration failed for quote ${newQuote.id}:`,
+          shopifyError,
+        );
+
+        // Update quote with error status but don't fail the entire operation
+        await this.database
+          .update(fullSchema.quotes)
+          .set({
+            shopifySyncStatus: 'FAILED',
+            shopifySyncError: shopifyError.message,
+          })
+          .where(eq(fullSchema.quotes.id, newQuote.id));
+      }
 
       return this.findQuoteById(newQuote.id);
     } catch (error) {
@@ -370,19 +451,265 @@ export class QuotesService {
       shippingInfo: {
         origin: 'NO.12 HUASHAN RD, SHILOU TOWN, PANYU DISTRICT, GUANGZHOU',
         destination: `${quote.customer?.city || 'Unknown'}, ${quote.customer?.state || 'Unknown'}`,
-        method: 'Standard Shipping',
-        estimatedCost: 0,
-        transitTime: '5-10 business days',
+        method: quote.shippingMethod || 'Standard Shipping',
+        estimatedCost: parseFloat(quote.shippingCost || '0'),
+        transitTime: quote.shippingEstimatedDays || '5-10 business days',
       },
       pricing: {
         subtotal: subtotal,
-        shipping: 0,
-        total: subtotal,
+        shipping: parseFloat(quote.shippingCost || '0'),
+        total: subtotal + parseFloat(quote.shippingCost || '0'),
         tax: tax,
-        finalTotal: finalTotal,
+        finalTotal: finalTotal + parseFloat(quote.shippingCost || '0'),
       },
       createdAt: quote.createdAt || new Date(),
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
     };
+  }
+
+  /**
+   * Create or find Shopify customer
+   */
+  async createShopifyCustomer(customerInfo: any): Promise<string | null> {
+    try {
+      this.logger.log(
+        `Creating/finding Shopify customer for: ${customerInfo.email}`,
+      );
+
+      // Check if customer already has Shopify ID
+      const existingCustomer = await this.database.query.customers.findFirst({
+        where: eq(fullSchema.customers.email, customerInfo.email),
+      });
+
+      if (existingCustomer?.shopifyCustomerId) {
+        this.logger.log(
+          `Using existing Shopify customer: ${existingCustomer.shopifyCustomerId}`,
+        );
+        return existingCustomer.shopifyCustomerId;
+      }
+
+      // Create customer in Shopify
+      const shopifyCustomer = await this.shopifyService.createCustomer({
+        firstName: customerInfo.firstName,
+        lastName: customerInfo.lastName,
+        email: customerInfo.email,
+        phone: customerInfo.phone,
+        addresses: [
+          {
+            firstName: customerInfo.firstName,
+            lastName: customerInfo.lastName,
+            company: customerInfo.companyName,
+            address1: customerInfo.streetAddress,
+            city: customerInfo.city,
+            province: customerInfo.state,
+            zip: customerInfo.zip,
+            country: customerInfo.country || 'US',
+          },
+        ],
+      });
+
+      if (shopifyCustomer?.customer?.id) {
+        const shopifyCustomerId = shopifyCustomer.customer.id;
+
+        // Update local customer with Shopify ID
+        await this.database
+          .update(fullSchema.customers)
+          .set({ shopifyCustomerId })
+          .where(eq(fullSchema.customers.email, customerInfo.email));
+
+        this.logger.log(`Created Shopify customer: ${shopifyCustomerId}`);
+        return shopifyCustomerId;
+      }
+
+      return null;
+    } catch (error) {
+      this.logger.error('Error creating Shopify customer:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Find matching Shopify variant for selected options
+   */
+  async findMatchingShopifyVariant(
+    productId: number,
+    selectedOptions: any[],
+  ): Promise<{ variantId: string; price: string; sku: string } | null> {
+    try {
+      this.logger.log(
+        `Finding Shopify variant for product ${productId} with options:`,
+        selectedOptions,
+      );
+
+      const variantMatch = await this.shopifyMappingService.findMatchingVariant(
+        productId,
+        selectedOptions.map((opt) => ({
+          optionId: opt.id,
+          value: opt.name,
+        })),
+      );
+
+      if (variantMatch) {
+        this.logger.log(`Found matching variant: ${variantMatch.variantId}`);
+        return {
+          variantId: variantMatch.variantId,
+          price: variantMatch.price || '0',
+          sku: variantMatch.sku || '',
+        };
+      }
+
+      this.logger.warn(`No matching variant found for product ${productId}`);
+      return null;
+    } catch (error) {
+      this.logger.error('Error finding Shopify variant:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create Shopify draft order
+   */
+  async createShopifyDraftOrder(
+    customerId: string,
+    variantId: string,
+    quantity: number,
+    price: string,
+    shippingInfo?: { method?: string; cost?: string; estimatedDays?: string },
+  ): Promise<string | null> {
+    try {
+      this.logger.log(
+        `Creating Shopify draft order for customer ${customerId}, variant ${variantId}`,
+      );
+
+      const draftOrderData: any = {
+        customerId,
+        lineItems: [
+          {
+            variantId,
+            quantity,
+            originalUnitPrice: price,
+          },
+        ],
+        useCustomerDefaultAddress: true,
+      };
+
+      // Add shipping information if provided
+      if (shippingInfo?.cost && parseFloat(shippingInfo.cost) > 0) {
+        draftOrderData.shippingLine = {
+          title: shippingInfo.method || 'Shipping',
+          price: shippingInfo.cost,
+        };
+      }
+
+      const draftOrder =
+        await this.shopifyService.createDraftOrder(draftOrderData);
+
+      if (draftOrder?.draftOrder?.id) {
+        const draftOrderId = draftOrder.draftOrder.id;
+        this.logger.log(`Created Shopify draft order: ${draftOrderId}`);
+        return draftOrderId;
+      }
+
+      return null;
+    } catch (error) {
+      this.logger.error('Error creating Shopify draft order:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Sync quote with Shopify (retry failed operations)
+   */
+  async syncQuoteWithShopify(quoteId: number): Promise<boolean> {
+    try {
+      this.logger.log(`Syncing quote ${quoteId} with Shopify`);
+
+      const quote = await this.database.query.quotes.findFirst({
+        where: eq(fullSchema.quotes.id, quoteId),
+        with: {
+          customer: true,
+        },
+      });
+
+      if (!quote) {
+        throw new Error(`Quote ${quoteId} not found`);
+      }
+
+      // Get the first selected product (assuming single product quotes for now)
+      const quoteOptions = await this.database.query.quoteOptions.findMany({
+        where: eq(fullSchema.quoteOptions.quoteId, quoteId),
+        with: {
+          option: true,
+        },
+      });
+
+      if (quoteOptions.length === 0) {
+        throw new Error(`No products found for quote ${quoteId}`);
+      }
+
+      // Create Shopify customer if needed
+      let shopifyCustomerId = quote.shopifyCustomerId;
+      if (!shopifyCustomerId && quote.customer) {
+        shopifyCustomerId = await this.createShopifyCustomer(quote.customer);
+      }
+
+      // Find matching variant
+      const variantMatch = await this.findMatchingShopifyVariant(
+        quote.productId,
+        quoteOptions.map((qo) => ({
+          id: qo.optionId,
+          name: qo.option?.title || 'Unknown',
+        })),
+      );
+
+      // Create draft order if we have both customer and variant
+      let shopifyDraftOrderId = quote.shopifyDraftOrderId;
+      if (!shopifyDraftOrderId && shopifyCustomerId && variantMatch) {
+        shopifyDraftOrderId = await this.createShopifyDraftOrder(
+          shopifyCustomerId,
+          variantMatch.variantId,
+          1, // TODO: Get actual quantity
+          variantMatch.price,
+          {
+            method: quote.shippingMethod || undefined,
+            cost: quote.shippingCost || undefined,
+            estimatedDays: quote.shippingEstimatedDays || undefined,
+          },
+        );
+      }
+
+      // Update quote with Shopify data
+      const updateData: any = {
+        shopifySyncStatus: 'SYNCED',
+        shopifySyncedAt: new Date(),
+        shopifySyncError: null,
+      };
+
+      if (shopifyCustomerId) updateData.shopifyCustomerId = shopifyCustomerId;
+      if (shopifyDraftOrderId)
+        updateData.shopifyDraftOrderId = shopifyDraftOrderId;
+      if (variantMatch) updateData.shopifyVariantId = variantMatch.variantId;
+
+      await this.database
+        .update(fullSchema.quotes)
+        .set(updateData)
+        .where(eq(fullSchema.quotes.id, quoteId));
+
+      this.logger.log(`Successfully synced quote ${quoteId} with Shopify`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error syncing quote ${quoteId} with Shopify:`, error);
+
+      // Update quote with error status
+      await this.database
+        .update(fullSchema.quotes)
+        .set({
+          shopifySyncStatus: 'FAILED',
+          shopifySyncError: error.message,
+        })
+        .where(eq(fullSchema.quotes.id, quoteId));
+
+      return false;
+    }
   }
 }

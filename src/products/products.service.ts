@@ -224,7 +224,8 @@ export class ProductsService {
     }> = {};
     if (dto.title) valuesToUpdate.title = dto.title;
     if (dto.description) valuesToUpdate.description = dto.description;
-    if (dto.basePrice) valuesToUpdate.basePrice = dto.basePrice.toString();
+    if (dto.basePrice !== undefined)
+      valuesToUpdate.basePrice = dto.basePrice.toString();
 
     const [updatedProduct] = await this.database
       .update(fullSchema.products)
@@ -276,7 +277,11 @@ export class ProductsService {
     return newDimension;
   }
 
-  async updateProductDimension(productId: number, dimensionId: number, dimensionData: any) {
+  async updateProductDimension(
+    productId: number,
+    dimensionId: number,
+    dimensionData: any,
+  ) {
     const [updatedDimension] = await this.database
       .update(fullSchema.productDimensions)
       .set({
@@ -292,8 +297,8 @@ export class ProductsService {
       .where(
         and(
           eq(fullSchema.productDimensions.id, dimensionId),
-          eq(fullSchema.productDimensions.productId, productId)
-        )
+          eq(fullSchema.productDimensions.productId, productId),
+        ),
       )
       .returning();
 
@@ -310,8 +315,8 @@ export class ProductsService {
       .where(
         and(
           eq(fullSchema.productDimensions.id, dimensionId),
-          eq(fullSchema.productDimensions.productId, productId)
-        )
+          eq(fullSchema.productDimensions.productId, productId),
+        ),
       )
       .returning();
 

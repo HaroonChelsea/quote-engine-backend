@@ -13,4 +13,7 @@ export const customers = pgTable('customers', {
   state: text('state').notNull(),
   zip: text('zip').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
+
+  // Shopify integration fields
+  shopifyCustomerId: text('shopify_customer_id'),
 });

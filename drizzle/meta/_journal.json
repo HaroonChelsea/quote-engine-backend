@@ -29,6 +29,27 @@
       "when": 1757406519952,
       "tag": "0003_fine_fabian_cortez",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1757537949657,
+      "tag": "0004_nice_starfox",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1757542701952,
+      "tag": "0005_slim_ronan",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1757602920709,
+      "tag": "0006_add_shipping_to_quotes",
+      "breakpoints": true
     }
   ]
 }

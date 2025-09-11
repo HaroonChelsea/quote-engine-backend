@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsBoolean,
   IsArray,
+  Min,
 } from 'class-validator';
 import { CreateProductDimensionDto } from './create-product-dimension.dto';
 
@@ -16,6 +17,7 @@ export class CreateProductDto {
   description?: string;
 
   @IsNumber()
+  @Min(0)
   basePrice: number;
 
   @IsString()
