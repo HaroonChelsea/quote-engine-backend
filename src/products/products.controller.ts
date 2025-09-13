@@ -11,7 +11,6 @@ import {
 import { ProductsService } from './products.service';
 import { FindProductsDto } from './dto/find-products.dto';
 import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
 
 @Controller('products')
 export class ProductsController {
@@ -19,55 +18,79 @@ export class ProductsController {
 
   @Post()
   create(@Body() createProductDto: CreateProductDto) {
-    return this.productsService.create(createProductDto);
-  }
-
-  @Post(':id/link-options')
-  linkOptions(@Param('id') id: string, @Body('optionIds') optionIds: number[]) {
-    return this.productsService.linkOptionsToProduct(Number(id), optionIds);
+    return this.productsService.createProduct({
+      title: createProductDto.title,
+      description: createProductDto.description,
+      basePrice: createProductDto.basePrice.toString(),
+      imageUrl: createProductDto.imageUrl,
+      weightKg: createProductDto.weightKg?.toString(),
+      lengthCm: createProductDto.lengthCm?.toString(),
+      widthCm: createProductDto.widthCm?.toString(),
+      heightCm: createProductDto.heightCm?.toString(),
+      volumeCbm: createProductDto.volumeCbm?.toString(),
+      shopifyId: createProductDto.shopifyId,
+    });
   }
 
   @Get()
   findAll(@Query() query: FindProductsDto) {
-    return this.productsService.findAll(query);
+    return this.productsService.getAllProducts();
+  }
+
+  @Get('option-groups')
+  getAllProductOptionGroups() {
+    return this.productsService.getAllProductOptionGroups();
+  }
+
+  @Get('with-option-counts')
+  getProductsWithOptionCounts() {
+    return this.productsService.getProductsWithOptionCounts();
   }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.productsService.findOne(Number(id));
+    return this.productsService.getProductById(Number(id));
   }
 
-  @Get(':id/dimensions/:type')
-  getProductDimensions(@Param('id') id: string, @Param('type') type: string) {
-    return this.productsService.getProductDimensionsByType(Number(id), type);
+  @Get(':id/dimensions')
+  getProductDimensions(@Param('id') id: string) {
+    return this.productsService.getProductDimensions(Number(id));
   }
 
   @Post(':id/dimensions')
   createProductDimension(@Param('id') id: string, @Body() dimensionData: any) {
-    return this.productsService.createProductDimension(Number(id), dimensionData);
+    return this.productsService.createProductDimension({
+      productId: Number(id),
+      ...dimensionData,
+    });
   }
 
   @Patch(':id/dimensions/:dimensionId')
   updateProductDimension(
     @Param('id') id: string,
     @Param('dimensionId') dimensionId: string,
-    @Body() dimensionData: any
+    @Body() dimensionData: any,
   ) {
-    return this.productsService.updateProductDimension(Number(id), Number(dimensionId), dimensionData);
+    return this.productsService.updateProductDimension(
+      Number(dimensionId),
+      dimensionData,
+    );
   }
 
   @Delete(':id/dimensions/:dimensionId')
-  deleteProductDimension(@Param('id') id: string, @Param('dimensionId') dimensionId: string) {
-    return this.productsService.deleteProductDimension(Number(id), Number(dimensionId));
+  deleteProductDimension(
+    @Param('id') id: string,
+    @Param('dimensionId') dimensionId: string,
+  ) {
+    return this.productsService.deleteProductDimension(Number(dimensionId));
   }
+  // @Patch(':id')
+  // update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
+  //   return this.productsService.update(Number(id), updateProductDto);
+  // }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
-    return this.productsService.update(Number(id), updateProductDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.productsService.remove(Number(id));
-  }
+  // @Delete(':id')
+  // remove(@Param('id') id: string) {
+  //   return this.productsService.remove(Number(id));
+  // }
 }

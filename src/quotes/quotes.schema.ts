@@ -24,6 +24,7 @@ export const shopifySyncStatusEnum = pgEnum('shopify_sync_status', [
   'SYNCED',
   'FAILED',
   'SKIPPED',
+  'PARTIAL',
 ]);
 
 export const quotes = pgTable('quotes', {

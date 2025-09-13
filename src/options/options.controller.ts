@@ -26,6 +26,11 @@ export class OptionsController {
     return this.optionsService.findAllGroups();
   }
 
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.optionsService.findOne(Number(id));
+  }
+
   @Post()
   createOption(@Body() createOptionDto: CreateOptionDto) {
     return this.optionsService.createOption(createOptionDto);

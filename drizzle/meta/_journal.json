@@ -50,6 +50,20 @@
       "when": 1757602920709,
       "tag": "0006_add_shipping_to_quotes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1757710255492,
+      "tag": "0007_common_devos",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1757713300930,
+      "tag": "0008_empty_molecule_man",
+      "breakpoints": true
     }
   ]
 }

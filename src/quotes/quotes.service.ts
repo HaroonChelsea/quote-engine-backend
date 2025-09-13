@@ -8,6 +8,7 @@ import { EmailService } from '../email/email.service';
 import { PdfService, QuotePdfData } from '../pdf/pdf.service';
 import { ShopifyService } from '../shopify/shopify.service';
 import { ShopifyMappingService } from '../shopify/shopify-mapping.service';
+import { ShopifyVariantMatcherService } from '../shopify/shopify-variant-matcher.service';
 
 @Injectable()
 export class QuotesService {
@@ -20,6 +21,7 @@ export class QuotesService {
     private readonly pdfService: PdfService,
     private readonly shopifyService: ShopifyService,
     private readonly shopifyMappingService: ShopifyMappingService,
+    private readonly shopifyVariantMatcher: ShopifyVariantMatcherService,
   ) {}
 
   async createQuote(dto: CreateQuoteDto) {
@@ -119,19 +121,36 @@ export class QuotesService {
         );
 
         // 1. Create or find Shopify customer
+        this.logger.log(
+          `Creating Shopify customer for: ${dto.customerInfo.email}`,
+        );
         const shopifyCustomerId = await this.createShopifyCustomer(
           dto.customerInfo,
         );
+        this.logger.log(
+          `Shopify customer creation result: ${shopifyCustomerId}`,
+        );
 
         // 2. Find matching Shopify variant
+        this.logger.log(
+          `Looking for variant match for product ${dto.selectedProducts[0].id} with options:`,
+          dto.selectedProducts[0].selectedOptions,
+        );
         const variantMatch = await this.findMatchingShopifyVariant(
           dto.selectedProducts[0].id,
           dto.selectedProducts[0].selectedOptions,
         );
+        this.logger.log(`Variant match result:`, variantMatch);
 
         // 3. Create Shopify draft order if we have both customer and variant
         let shopifyDraftOrderId: string | null = null;
+        this.logger.log(
+          `Draft order conditions - Customer ID: ${shopifyCustomerId}, Variant Match: ${!!variantMatch}`,
+        );
         if (shopifyCustomerId && variantMatch) {
+          this.logger.log(
+            `Creating draft order with customer ${shopifyCustomerId} and variant ${variantMatch.variantId}`,
+          );
           shopifyDraftOrderId = await this.createShopifyDraftOrder(
             shopifyCustomerId,
             variantMatch.variantId,
@@ -139,14 +158,49 @@ export class QuotesService {
             variantMatch.price,
             dto.shippingInfo,
           );
+          this.logger.log(
+            `Draft order created with ID: ${shopifyDraftOrderId}`,
+          );
+        } else {
+          this.logger.warn(
+            `Cannot create draft order - Missing customer ID: ${!shopifyCustomerId}, Missing variant match: ${!variantMatch}`,
+          );
         }
 
         // 4. Update quote with Shopify data
         const shopifyUpdateData: any = {
-          shopifySyncStatus: 'SYNCED',
           shopifySyncedAt: new Date(),
           shopifySyncError: null,
         };
+
+        // Determine sync status based on what was actually created
+        if (shopifyCustomerId && shopifyDraftOrderId) {
+          shopifyUpdateData.shopifySyncStatus = 'SYNCED';
+          this.logger.log(
+            `Successfully integrated quote ${newQuote.id} with Shopify - Customer and Draft Order created`,
+          );
+        } else if (shopifyCustomerId && variantMatch) {
+          shopifyUpdateData.shopifySyncStatus = 'PARTIAL';
+          shopifyUpdateData.shopifySyncError =
+            'Customer created but draft order failed';
+          this.logger.warn(
+            `Partial Shopify integration for quote ${newQuote.id} - Customer created but draft order failed`,
+          );
+        } else if (variantMatch) {
+          shopifyUpdateData.shopifySyncStatus = 'PARTIAL';
+          shopifyUpdateData.shopifySyncError =
+            'Variant found but customer creation failed';
+          this.logger.warn(
+            `Partial Shopify integration for quote ${newQuote.id} - Variant found but customer creation failed`,
+          );
+        } else {
+          shopifyUpdateData.shopifySyncStatus = 'FAILED';
+          shopifyUpdateData.shopifySyncError =
+            'Customer creation and variant matching failed';
+          this.logger.error(
+            `Shopify integration failed for quote ${newQuote.id} - Customer creation and variant matching failed`,
+          );
+        }
 
         if (shopifyCustomerId)
           shopifyUpdateData.shopifyCustomerId = shopifyCustomerId;
@@ -159,10 +213,6 @@ export class QuotesService {
           .update(fullSchema.quotes)
           .set(shopifyUpdateData)
           .where(eq(fullSchema.quotes.id, newQuote.id));
-
-        this.logger.log(
-          `Successfully integrated quote ${newQuote.id} with Shopify`,
-        );
       } catch (shopifyError) {
         this.logger.error(
           `Shopify integration failed for quote ${newQuote.id}:`,
@@ -468,6 +518,48 @@ export class QuotesService {
   }
 
   /**
+   * Get valid province code for Shopify using the Shopify service
+   */
+  private async getValidProvinceCode(
+    countryCode: string,
+    state: string,
+  ): Promise<string> {
+    if (!state) {
+      return countryCode === 'US' ? 'CA' : 'ON';
+    }
+
+    try {
+      return await this.shopifyService.validateProvinceCode(countryCode, state);
+    } catch (error) {
+      this.logger.error('Error validating province code:', error);
+      // Return safe defaults
+      return countryCode === 'US' ? 'CA' : 'ON';
+    }
+  }
+
+  /**
+   * Format phone number to E.164 format for Shopify
+   */
+  private formatPhoneNumber(phone: string): string {
+    if (!phone) return '';
+
+    const digits = phone.replace(/\D/g, '');
+
+    if (digits.length === 11 && digits.startsWith('1')) {
+      return `+${digits}`;
+    }
+
+    if (digits.length === 10) {
+      return `+1${digits}`;
+    }
+
+    if (phone.startsWith('+')) {
+      return phone;
+    }
+    return phone;
+  }
+
+  /**
    * Create or find Shopify customer
    */
   async createShopifyCustomer(customerInfo: any): Promise<string | null> {
@@ -476,24 +568,69 @@ export class QuotesService {
         `Creating/finding Shopify customer for: ${customerInfo.email}`,
       );
 
-      // Check if customer already has Shopify ID
+      // Check if customer already has Shopify ID in local database
       const existingCustomer = await this.database.query.customers.findFirst({
         where: eq(fullSchema.customers.email, customerInfo.email),
       });
 
       if (existingCustomer?.shopifyCustomerId) {
         this.logger.log(
-          `Using existing Shopify customer: ${existingCustomer.shopifyCustomerId}`,
+          `Using existing Shopify customer from local DB: ${existingCustomer.shopifyCustomerId}`,
         );
         return existingCustomer.shopifyCustomerId;
       }
 
-      // Create customer in Shopify
+      // Check if customer exists in Shopify by email
+      try {
+        const existingShopifyCustomer =
+          await this.shopifyService.getCustomerByEmail(customerInfo.email);
+        if (existingShopifyCustomer?.customer?.id) {
+          const shopifyCustomerId = existingShopifyCustomer.customer.id;
+          this.logger.log(
+            `Found existing Shopify customer: ${shopifyCustomerId}`,
+          );
+
+          // Update local customer with Shopify ID
+          await this.database
+            .update(fullSchema.customers)
+            .set({ shopifyCustomerId })
+            .where(eq(fullSchema.customers.email, customerInfo.email));
+
+          return shopifyCustomerId;
+        }
+      } catch (error) {
+        if (
+          error.message?.includes('timeout') ||
+          error.message?.includes('fetch failed')
+        ) {
+          this.logger.warn(
+            'Shopify API timeout when checking existing customer, will try to create new one',
+          );
+        } else {
+          this.logger.log('Customer not found in Shopify, will create new one');
+        }
+      }
+
+      // Create new customer in Shopify
+      const formattedPhone = this.formatPhoneNumber(customerInfo.phone);
+      const countryCode = customerInfo.country || 'US';
+      const validProvince = await this.getValidProvinceCode(
+        countryCode,
+        customerInfo.state,
+      );
+
+      this.logger.log(
+        `Formatted phone number: ${customerInfo.phone} -> ${formattedPhone}`,
+      );
+      this.logger.log(
+        `Validated province: ${customerInfo.state} -> ${validProvince} for country ${countryCode}`,
+      );
+
       const shopifyCustomer = await this.shopifyService.createCustomer({
         firstName: customerInfo.firstName,
         lastName: customerInfo.lastName,
         email: customerInfo.email,
-        phone: customerInfo.phone,
+        phone: formattedPhone,
         addresses: [
           {
             firstName: customerInfo.firstName,
@@ -501,15 +638,17 @@ export class QuotesService {
             company: customerInfo.companyName,
             address1: customerInfo.streetAddress,
             city: customerInfo.city,
-            province: customerInfo.state,
+            province: validProvince,
             zip: customerInfo.zip,
-            country: customerInfo.country || 'US',
+            country: countryCode,
           },
         ],
       });
 
-      if (shopifyCustomer?.customer?.id) {
-        const shopifyCustomerId = shopifyCustomer.customer.id;
+      this.logger.log(`Shopify customer creation response:`, shopifyCustomer);
+
+      if (shopifyCustomer?.customerCreate?.customer?.id) {
+        const shopifyCustomerId = shopifyCustomer.customerCreate.customer.id;
 
         // Update local customer with Shopify ID
         await this.database
@@ -517,13 +656,23 @@ export class QuotesService {
           .set({ shopifyCustomerId })
           .where(eq(fullSchema.customers.email, customerInfo.email));
 
-        this.logger.log(`Created Shopify customer: ${shopifyCustomerId}`);
+        this.logger.log(`Created new Shopify customer: ${shopifyCustomerId}`);
         return shopifyCustomerId;
       }
 
       return null;
     } catch (error) {
-      this.logger.error('Error creating Shopify customer:', error);
+      if (
+        error.message?.includes('timeout') ||
+        error.message?.includes('fetch failed')
+      ) {
+        this.logger.error(
+          'Shopify API timeout when creating customer:',
+          error.message,
+        );
+      } else {
+        this.logger.error('Error creating Shopify customer:', error);
+      }
       return null;
     }
   }
@@ -541,12 +690,18 @@ export class QuotesService {
         selectedOptions,
       );
 
-      const variantMatch = await this.shopifyMappingService.findMatchingVariant(
+      // Convert old format to new format
+      const newFormatOptions = selectedOptions.map((opt) => ({
+        optionGroupId: opt.optionGroupId || 0, // Use optionGroupId from the selected option
+        optionId: opt.id,
+        optionName: opt.name,
+        optionGroupName: opt.groupName || 'Unknown',
+        optionGroupType: opt.groupType || ('CUSTOM' as const),
+      }));
+
+      const variantMatch = await this.shopifyVariantMatcher.findMatchingVariant(
         productId,
-        selectedOptions.map((opt) => ({
-          optionId: opt.id,
-          value: opt.name,
-        })),
+        newFormatOptions,
       );
 
       if (variantMatch) {
@@ -604,8 +759,8 @@ export class QuotesService {
       const draftOrder =
         await this.shopifyService.createDraftOrder(draftOrderData);
 
-      if (draftOrder?.draftOrder?.id) {
-        const draftOrderId = draftOrder.draftOrder.id;
+      if (draftOrder?.draftOrderCreate?.draftOrder?.id) {
+        const draftOrderId = draftOrder.draftOrderCreate.draftOrder.id;
         this.logger.log(`Created Shopify draft order: ${draftOrderId}`);
         return draftOrderId;
       }

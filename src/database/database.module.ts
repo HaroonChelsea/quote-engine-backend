@@ -7,9 +7,11 @@ import * as customerSchema from '../customers/customers.schema';
 import * as shopifySchema from '../products/products.schema';
 import * as quoteSchema from '../quotes/quotes.schema';
 import * as optionSchema from '../options/options.schema';
-import * as productOptionSchema from '../products/product-options.schema';
+// import * as productOptionSchema from '../products/product-options.schema'; // Removed - using new product-option-groups.schema
 import * as productDimensionsSchema from '../products/product-dimensions.schema';
 import * as shopifyMappingSchema from '../shopify/shopify-product-mapping.schema';
+import * as productOptionGroupsSchema from '../products/product-option-groups.schema';
+import * as shippingSelectionSchema from '../shipping/shipping-selection.schema';
 import { drizzle } from 'drizzle-orm/node-postgres';
 
 export const fullSchema = {
@@ -18,9 +20,11 @@ export const fullSchema = {
   ...shopifySchema,
   ...quoteSchema,
   ...optionSchema,
-  ...productOptionSchema,
+  // ...productOptionSchema, // Removed - using new product-option-groups.schema
   ...productDimensionsSchema,
   ...shopifyMappingSchema,
+  ...productOptionGroupsSchema,
+  ...shippingSelectionSchema,
 };
 
 @Module({

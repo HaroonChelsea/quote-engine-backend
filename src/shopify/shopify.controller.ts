@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Param, Logger, Body } from '@nestjs/common';
 import { ShopifyService } from './shopify.service';
 import { ShopifyMappingService } from './shopify-mapping.service';
 import { exec } from 'child_process';
@@ -66,17 +66,20 @@ export class ShopifyController {
   @Post('sync-all')
   async syncAllProducts() {
     try {
-      this.logger.log('Starting sync of all products from Shopify');
+      this.logger.log(
+        'Starting sync of all products from Shopify (new product-specific options system)',
+      );
 
-      // Run the rebuild script
+      // Run the new rebuild script
       const { stdout, stderr } = await execAsync(
-        'node rebuild-from-shopify.js',
+        'node rebuild-from-shopify-new.js',
       );
 
       this.logger.log('Sync completed successfully');
       return {
         success: true,
-        message: 'All products synced from Shopify successfully',
+        message:
+          'All products synced from Shopify successfully with product-specific options',
         output: stdout,
       };
     } catch (error) {
@@ -230,6 +233,77 @@ export class ShopifyController {
       };
     } catch (error) {
       this.logger.error('Error cleaning up duplicate mappings:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  @Post('test-customer')
+  async testCustomerCreation(@Body() customerData: any) {
+    try {
+      this.logger.log('Testing customer creation with data:', customerData);
+      const result = await this.shopifyService.createCustomer(customerData);
+      this.logger.log('Customer creation test successful');
+      return {
+        success: true,
+        customerId: result?.customerCreate?.customer?.id,
+        email: result?.customerCreate?.customer?.email,
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Customer creation test failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        details: error,
+      };
+    }
+  }
+
+  @Get('provinces')
+  async getValidProvinces() {
+    try {
+      this.logger.log('Fetching valid provinces from Shopify');
+      const provinces = await this.shopifyService.getValidProvinces();
+      this.logger.log('Provinces fetched successfully');
+      return {
+        success: true,
+        data: provinces,
+      };
+    } catch (error) {
+      this.logger.error('Error fetching provinces:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  @Post('validate-province')
+  async validateProvince(
+    @Body() data: { countryCode: string; provinceCode: string },
+  ) {
+    try {
+      this.logger.log(
+        `Validating province ${data.provinceCode} for country ${data.countryCode}`,
+      );
+      const validProvince = await this.shopifyService.validateProvinceCode(
+        data.countryCode,
+        data.provinceCode,
+      );
+      this.logger.log(
+        `Province validation successful: ${data.provinceCode} -> ${validProvince}`,
+      );
+      return {
+        success: true,
+        originalProvince: data.provinceCode,
+        validProvince: validProvince,
+        countryCode: data.countryCode,
+      };
+    } catch (error) {
+      this.logger.error('Error validating province:', error);
       return {
         success: false,
         error: error.message,

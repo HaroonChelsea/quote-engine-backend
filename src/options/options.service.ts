@@ -68,4 +68,17 @@ export class OptionsService {
       .where(eq(fullSchema.optionGroups.id, id));
     return { message: 'Option group and its options deleted successfully' };
   }
+
+  async findOne(id: number) {
+    const option = await this.database.query.productOptions.findFirst({
+      where: eq(fullSchema.productOptions.id, id),
+      with: { optionGroup: true },
+    });
+
+    if (!option) {
+      throw new NotFoundException(`Option with ID ${id} not found`);
+    }
+
+    return option;
+  }
 }

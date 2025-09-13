@@ -54,11 +54,23 @@ class SelectedOptionDto {
   @IsNumber()
   id: number;
 
+  @IsNumber()
+  @IsOptional()
+  optionGroupId?: number;
+
   @IsString()
   name: string;
 
   @IsString()
   price: string;
+
+  @IsString()
+  @IsOptional()
+  groupName?: string;
+
+  @IsString()
+  @IsOptional()
+  groupType?: string;
 
   @IsString()
   @IsOptional()

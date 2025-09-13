@@ -8,7 +8,7 @@ import {
   integer,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { productOptions } from './product-options.schema';
+import { productOptions } from './product-option-groups.schema';
 
 export const products = pgTable('products', {
   id: serial('id').primaryKey(),

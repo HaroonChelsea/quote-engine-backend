@@ -8,6 +8,7 @@ import { ProductsModule } from './products/products.module';
 import { OptionsModule } from './options/options.module';
 import { EmailModule } from './email/email.module';
 import { ShopifyModule } from './shopify/shopify.module';
+import { ShippingModule } from './shipping/shipping.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ShopifyModule } from './shopify/shopify.module';
     OptionsModule,
     EmailModule,
     ShopifyModule,
+    ShippingModule,
   ],
 })
 export class AppModule {}

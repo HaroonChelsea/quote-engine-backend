@@ -1,7 +1,7 @@
 import { pgTable, serial, text, numeric, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { integer } from 'drizzle-orm/pg-core';
-import { productOptions } from 'src/products/product-options.schema';
+import { productOptions } from 'src/products/product-option-groups.schema';
 
 export const optionGroupTypeEnum = pgEnum('option_group_type', [
   'SINGLE_SELECT',
