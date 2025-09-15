@@ -9,26 +9,22 @@ const rebuildFromShopify = async () => {
   );
 
   try {
-    // Step 1: Clear existing data
-    console.log('1️⃣ Clearing existing local data...');
-    await clearLocalData();
-
-    // Step 2: Get all active Shopify products
-    console.log('\n2️⃣ Fetching all active Shopify products...');
+    // Step 1: Get all active Shopify products
+    console.log('1️⃣ Fetching all active Shopify products...');
     const shopifyProducts = await getAllShopifyProducts();
     console.log(`   Found ${shopifyProducts.length} active products`);
 
-    // Step 3: Create local products with their specific options
+    // Step 2: Create or update local products with their specific options
     console.log(
-      '\n3️⃣ Creating local products with product-specific options...',
+      '\n2️⃣ Creating/updating local products with product-specific options...',
     );
     const localProducts = await createLocalProductsWithOptions(shopifyProducts);
     console.log(
-      `   Created ${localProducts.length} local products with their options`,
+      `   Processed ${localProducts.length} local products with their options`,
     );
 
-    // Step 4: Create product mappings
-    console.log('\n4️⃣ Creating Shopify product mappings...');
+    // Step 3: Create product mappings
+    console.log('\n3️⃣ Creating Shopify product mappings...');
     await createProductMappings(localProducts, shopifyProducts);
 
     console.log('\n✅ System rebuild complete!');
@@ -213,31 +209,60 @@ const createLocalProductsWithOptions = async (shopifyProducts) => {
   for (const product of shopifyProducts) {
     console.log(`\n   📦 Processing: ${product.title}`);
 
-    // Step 1: Create the local product
-    // For POS system: Always set base price to 0, variants contain actual prices
-    const actualBasePrice = 0;
-
-    const productData = {
-      title: product.title,
-      description: product.description || '',
-      basePrice: actualBasePrice,
-      shopifyId: product.id,
-    };
-
-    const productResponse = await fetch('http://localhost:3001/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(productData),
-    });
-
-    if (!productResponse.ok) {
-      console.log(`   ❌ Failed to create product: ${product.title}`);
-      continue;
+    // Step 1: Check if product already exists by Shopify ID
+    let existingProduct = null;
+    try {
+      const existingResponse = await fetch(
+        `http://localhost:3001/products?shopifyId=${encodeURIComponent(product.id)}`,
+      );
+      if (existingResponse.ok) {
+        const existingProducts = await existingResponse.json();
+        if (existingProducts.length > 0) {
+          existingProduct = existingProducts[0];
+          console.log(
+            `   🔍 Found existing product: ${existingProduct.title} (ID: ${existingProduct.id})`,
+          );
+        }
+      }
+    } catch (error) {
+      console.log(
+        `   ⚠️  Could not check for existing product: ${error.message}`,
+      );
     }
 
-    const createdProduct = await productResponse.json();
+    let createdProduct;
+    if (existingProduct) {
+      // Use existing product
+      createdProduct = existingProduct;
+      console.log(`   ♻️  Using existing product: ${product.title}`);
+    } else {
+      // Create new product
+      // For POS system: Always set base price to 0, variants contain actual prices
+      const actualBasePrice = 0;
+
+      const productData = {
+        title: product.title,
+        description: product.description || '',
+        basePrice: actualBasePrice,
+        shopifyId: product.id,
+      };
+
+      const productResponse = await fetch('http://localhost:3001/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData),
+      });
+
+      if (!productResponse.ok) {
+        console.log(`   ❌ Failed to create product: ${product.title}`);
+        continue;
+      }
+
+      createdProduct = await productResponse.json();
+      console.log(`   ✅ Created product: ${product.title}`);
+    }
+
     localProducts.push(createdProduct);
-    console.log(`   ✅ Created product: ${product.title}`);
 
     // Step 2: Create product-specific option groups
     const optionGroups = await createProductOptionGroups(

@@ -97,9 +97,9 @@ export class ShopifyController {
     try {
       this.logger.log('Starting complete rebuild from Shopify');
 
-      // Run the rebuild script
+      // Run the new rebuild script
       const { stdout, stderr } = await execAsync(
-        'node rebuild-from-shopify.js',
+        'node rebuild-from-shopify-new.js',
       );
 
       this.logger.log('Rebuild completed successfully');

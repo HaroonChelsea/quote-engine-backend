@@ -82,12 +82,10 @@ export class QuotesService {
         .insert(fullSchema.quotes)
         .values({
           customerId: customerId,
-          productId: dto.selectedProducts[0].id,
+          productId: dto.selectedProducts[0].id, // Required field, using first product
           status: 'DRAFT',
-          basePrice: dto.selectedProducts[0].basePrice,
-          optionsPrice: dto.selectedProducts[0].selectedOptions
-            .reduce((sum, opt) => sum + parseFloat(opt.price), 0)
-            .toString(),
+          basePrice: '0', // Not used in new structure
+          optionsPrice: '0', // Not used in new structure
           totalAmount: totalAmount.toFixed(2),
           // Store shipping information
           shippingMethod: dto.shippingInfo?.method,
@@ -96,18 +94,44 @@ export class QuotesService {
         })
         .returning();
 
-      // Save the selected options for this quote
-      if (dto.selectedProducts[0].selectedOptions.length > 0) {
-        const quoteOptionsToInsert =
-          dto.selectedProducts[0].selectedOptions.map((option) => ({
-            quoteId: newQuote.id,
-            optionId: option.id,
-            price: option.price,
-          }));
+      // Store all selected products in the new quoteProducts table
+      const quoteProductsToInsert = dto.selectedProducts.map((product) => {
+        const optionsPrice = product.selectedOptions.reduce(
+          (sum, opt) => sum + parseFloat(opt.price),
+          0,
+        );
+        const totalPrice = parseFloat(product.basePrice) + optionsPrice;
 
+        return {
+          quoteId: newQuote.id,
+          productId: product.id,
+          productTitle: product.title,
+          basePrice: product.basePrice,
+          quantity: product.quantity,
+          unitType: product.unitType,
+          unitQuantity: product.unitQuantity,
+          optionsPrice: optionsPrice.toString(),
+          totalPrice: (totalPrice * product.quantity).toString(),
+        };
+      });
+
+      await this.database
+        .insert(fullSchema.quoteProducts)
+        .values(quoteProductsToInsert);
+
+      // Save the selected options for this quote (for all products)
+      const allQuoteOptions = dto.selectedProducts.flatMap((product) =>
+        product.selectedOptions.map((option) => ({
+          quoteId: newQuote.id,
+          optionId: option.id,
+          price: option.price,
+        })),
+      );
+
+      if (allQuoteOptions.length > 0) {
         await this.database
           .insert(fullSchema.quoteOptions)
-          .values(quoteOptionsToInsert);
+          .values(allQuoteOptions);
       }
 
       console.log(
@@ -429,47 +453,59 @@ export class QuotesService {
       throw new NotFoundException('Quote not found');
     }
 
-    // Get the quote options with their details
+    // Get all products for this quote from the new quoteProducts table
+    const quoteProducts = await this.database
+      .select()
+      .from(fullSchema.quoteProducts)
+      .where(eq(fullSchema.quoteProducts.quoteId, quoteId));
+
+    if (quoteProducts.length === 0) {
+      throw new NotFoundException('No products found for this quote');
+    }
+
+    // Get the quote options with their details for all products
     const quoteOptions = await this.database
       .select({
         id: fullSchema.quoteOptions.id,
         optionId: fullSchema.quoteOptions.optionId,
         price: fullSchema.quoteOptions.price,
-        optionTitle: fullSchema.options.title,
-        groupName: fullSchema.optionGroups.name,
+        optionTitle: fullSchema.productOptions.name,
+        groupName: fullSchema.productOptionGroups.name,
+        groupType: fullSchema.productOptionGroups.type,
       })
       .from(fullSchema.quoteOptions)
       .leftJoin(
-        fullSchema.options,
-        eq(fullSchema.quoteOptions.optionId, fullSchema.options.id),
+        fullSchema.productOptions,
+        eq(fullSchema.quoteOptions.optionId, fullSchema.productOptions.id),
       )
       .leftJoin(
-        fullSchema.optionGroups,
-        eq(fullSchema.options.groupId, fullSchema.optionGroups.id),
+        fullSchema.productOptionGroups,
+        eq(
+          fullSchema.productOptions.productOptionGroupId,
+          fullSchema.productOptionGroups.id,
+        ),
       )
       .where(eq(fullSchema.quoteOptions.quoteId, quoteId));
 
-    // Get the product details
-    const product = await this.database
-      .select()
-      .from(fullSchema.products)
-      .where(eq(fullSchema.products.id, quote.productId))
-      .limit(1);
+    // Group options by product (we'll need to match them by productId)
+    const optionsByProduct = new Map<number, any[]>();
+    quoteOptions.forEach((option) => {
+      // For now, we'll put all options with the first product since we don't have productId in quoteOptions
+      // This is a limitation of the current schema - we might need to add productId to quoteOptions later
+      const firstProductId = quoteProducts[0].productId;
+      if (!optionsByProduct.has(firstProductId)) {
+        optionsByProduct.set(firstProductId, []);
+      }
+      optionsByProduct.get(firstProductId)!.push(option);
+    });
 
-    const productData = product[0];
-    if (!productData) {
-      throw new NotFoundException('Product not found');
-    }
-
-    // Calculate pricing
-    const basePrice = parseFloat(quote.basePrice || '0');
-    const optionsPrice = quoteOptions.reduce(
-      (sum, opt) => sum + parseFloat(opt.price || '0'),
+    // Calculate total pricing
+    const productsSubtotal = quoteProducts.reduce(
+      (sum, product) => sum + parseFloat(product.totalPrice || '0'),
       0,
     );
-    const subtotal = basePrice + optionsPrice;
-    const tax = subtotal * 0.08;
-    const finalTotal = subtotal + tax;
+    const tax = productsSubtotal * 0.08;
+    const finalTotal = productsSubtotal + tax;
 
     return {
       quoteNumber: `Q-${quoteId}`,
@@ -486,18 +522,25 @@ export class QuotesService {
         zip: quote.customer?.zip || 'Unknown',
         country: 'US',
       },
-      products: [
-        {
-          title: productData.title,
-          quantity: 1, // Default quantity, you might want to store this in the quote
-          basePrice: basePrice,
-          options: quoteOptions.map((opt) => ({
-            title: `${opt.groupName}: ${opt.optionTitle}`,
+      products: quoteProducts.map((quoteProduct) => {
+        const productOptions =
+          optionsByProduct.get(quoteProduct.productId) || [];
+
+        return {
+          title: quoteProduct.productTitle,
+          quantity: quoteProduct.quantity,
+          unitType: quoteProduct.unitType,
+          unitQuantity: quoteProduct.unitQuantity,
+          basePrice: parseFloat(quoteProduct.basePrice || '0'),
+          options: productOptions.map((opt) => ({
+            groupName: opt.groupName || 'Option',
+            groupType: opt.groupType || 'CUSTOM',
+            name: opt.optionTitle || 'Unknown Option',
             price: parseFloat(opt.price || '0'),
           })),
-          totalPrice: subtotal,
-        },
-      ],
+          totalPrice: parseFloat(quoteProduct.totalPrice || '0'),
+        };
+      }),
       shippingInfo: {
         origin: 'NO.12 HUASHAN RD, SHILOU TOWN, PANYU DISTRICT, GUANGZHOU',
         destination: `${quote.customer?.city || 'Unknown'}, ${quote.customer?.state || 'Unknown'}`,
@@ -506,9 +549,9 @@ export class QuotesService {
         transitTime: quote.shippingEstimatedDays || '5-10 business days',
       },
       pricing: {
-        subtotal: subtotal,
+        subtotal: productsSubtotal,
         shipping: parseFloat(quote.shippingCost || '0'),
-        total: subtotal + parseFloat(quote.shippingCost || '0'),
+        total: productsSubtotal + parseFloat(quote.shippingCost || '0'),
         tax: tax,
         finalTotal: finalTotal + parseFloat(quote.shippingCost || '0'),
       },

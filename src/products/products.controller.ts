@@ -34,7 +34,7 @@ export class ProductsController {
 
   @Get()
   findAll(@Query() query: FindProductsDto) {
-    return this.productsService.getAllProducts();
+    return this.productsService.getAllProducts(query.shopifyId);
   }
 
   @Get('option-groups')

@@ -6,6 +6,7 @@ import * as userSchema from '../users/users.schema';
 import * as customerSchema from '../customers/customers.schema';
 import * as shopifySchema from '../products/products.schema';
 import * as quoteSchema from '../quotes/quotes.schema';
+import * as quoteProductsSchema from '../quotes/quote-products.schema';
 import * as optionSchema from '../options/options.schema';
 // import * as productOptionSchema from '../products/product-options.schema'; // Removed - using new product-option-groups.schema
 import * as productDimensionsSchema from '../products/product-dimensions.schema';
@@ -19,6 +20,7 @@ export const fullSchema = {
   ...customerSchema,
   ...shopifySchema,
   ...quoteSchema,
+  ...quoteProductsSchema,
   ...optionSchema,
   // ...productOptionSchema, // Removed - using new product-option-groups.schema
   ...productDimensionsSchema,

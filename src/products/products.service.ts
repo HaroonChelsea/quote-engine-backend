@@ -15,14 +15,21 @@ export class ProductsService {
 
   constructor(@Inject(DATABASE_CONNECTION) private db: any) {}
 
-  async getAllProducts() {
+  async getAllProducts(shopifyId?: string) {
     this.logger.log('Getting all products');
 
-    const allProducts = await this.db
+    let query = this.db
       .select()
       .from(products)
-      .where(eq(products.isActive, true))
-      .orderBy(asc(products.title));
+      .where(eq(products.isActive, true));
+
+    if (shopifyId) {
+      query = query.where(
+        and(eq(products.isActive, true), eq(products.shopifyId, shopifyId)),
+      );
+    }
+
+    const allProducts = await query.orderBy(asc(products.title));
 
     return allProducts;
   }

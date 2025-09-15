@@ -16,4 +16,8 @@ export class FindProductsDto {
   @IsOptional()
   @IsString()
   vendor?: string;
+
+  @IsOptional()
+  @IsString()
+  shopifyId?: string;
 }

@@ -19,9 +19,13 @@ export interface QuotePdfData {
   products: Array<{
     title: string;
     quantity: number;
+    unitType: string;
+    unitQuantity: number;
     basePrice: number;
     options: Array<{
-      title: string;
+      groupName: string;
+      groupType: string;
+      name: string;
       price: number;
     }>;
     totalPrice: number;
@@ -335,18 +339,30 @@ export class PdfService {
                 .map(
                   (product) => `
                 <tr>
-                  <td>${product.title}</td>
-                  <td>${product.quantity}</td>
-                  <td>$${product.basePrice.toLocaleString()}</td>
                   <td>
-                    ${product.options
-                      .map(
-                        (option) =>
-                          `${option.title} (+$${option.price.toLocaleString()})`,
-                      )
-                      .join('<br>')}
+                    <strong>${product.title}</strong>
+                    ${product.basePrice > 0 ? '' : '<br><small style="color: #6b7280;">(Price varies by options)</small>'}
                   </td>
-                  <td>$${product.totalPrice.toLocaleString()}</td>
+                  <td>
+                    ${product.quantity} ${product.unitType}${product.quantity > 1 ? 's' : ''}
+                    ${product.unitQuantity > 1 ? `<br><small>(${product.unitQuantity} units per ${product.unitType})</small>` : ''}
+                  </td>
+                  <td>
+                    ${product.basePrice > 0 ? `$${product.basePrice.toLocaleString()}` : 'Included in options'}
+                  </td>
+                  <td>
+                    ${
+                      product.options.length > 0
+                        ? product.options
+                            .map(
+                              (option) =>
+                                `<strong>${option.groupName}:</strong> ${option.name} ${parseFloat(option.price.toString()) > 0 ? `(+$${parseFloat(option.price.toString()).toLocaleString()})` : ''}`,
+                            )
+                            .join('<br>')
+                        : '<em>No options selected</em>'
+                    }
+                  </td>
+                  <td><strong>$${product.totalPrice.toLocaleString()}</strong></td>
                 </tr>
               `,
                 )
