@@ -56,7 +56,12 @@ export class PdfService {
     let browser;
     try {
       this.logger.log('Generating quote PDF with brand pages...');
+      this.logger.log(
+        'Quote data received:',
+        JSON.stringify(quoteData, null, 2),
+      );
 
+      this.logger.log('Launching Puppeteer browser...');
       browser = await puppeteer.launch({
         headless: true,
         args: [
@@ -72,11 +77,24 @@ export class PdfService {
         timeout: 60000, // 60 second timeout for browser launch
       });
 
+      this.logger.log('Creating new page...');
       const page = await browser.newPage();
 
+      this.logger.log('Generating brand pages HTML...');
       // Generate brand pages HTML
-      const brandPagesHtml = this.generateBrandPagesHtml();
+      let brandPagesHtml = '';
+      try {
+        brandPagesHtml = this.generateBrandPagesHtml();
+        this.logger.log('Brand pages HTML generated successfully');
+      } catch (brandError) {
+        this.logger.warn(
+          'Failed to generate brand pages, continuing without them:',
+          brandError,
+        );
+        brandPagesHtml = ''; // Continue without brand pages
+      }
 
+      this.logger.log('Generating quote content HTML...');
       // Generate quote content HTML
       const quoteHtml = this.generateQuoteHtml(quoteData);
 
@@ -122,12 +140,13 @@ export class PdfService {
           </head>
           <body>
             ${brandPagesHtml}
-            <div class="page-break"></div>
+            ${brandPagesHtml ? '<div class="page-break"></div>' : ''}
             ${quoteHtml}
           </body>
         </html>
       `;
 
+      this.logger.log('Setting page content...');
       // Set page timeout to prevent hanging
       page.setDefaultTimeout(45000); // 45 seconds
 
@@ -136,9 +155,11 @@ export class PdfService {
         timeout: 45000,
       });
 
+      this.logger.log('Waiting for content to load...');
       // Wait a bit more for any dynamic content to load
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
+      this.logger.log('Generating PDF...');
       // Generate PDF
       const pdfBuffer = await page.pdf({
         format: 'A4',
@@ -168,7 +189,110 @@ export class PdfService {
         }
       }
 
-      throw new Error('Failed to generate PDF');
+      // Try fallback method without brand pages
+      this.logger.log(
+        'Attempting fallback PDF generation without brand pages...',
+      );
+      try {
+        return await this.generateQuotePdfFallback(quoteData);
+      } catch (fallbackError) {
+        this.logger.error(
+          'Fallback PDF generation also failed:',
+          fallbackError,
+        );
+        throw new Error('Failed to generate PDF');
+      }
+    }
+  }
+
+  private async generateQuotePdfFallback(
+    quoteData: QuotePdfData,
+  ): Promise<Buffer> {
+    let browser;
+    try {
+      this.logger.log('Generating fallback PDF without brand pages...');
+
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu',
+        ],
+        timeout: 60000,
+      });
+
+      const page = await browser.newPage();
+      page.setDefaultTimeout(45000);
+
+      // Generate only quote content HTML (no brand pages)
+      const quoteHtml = this.generateQuoteHtml(quoteData);
+
+      const fullHtmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Quote ${quoteData.quoteNumber}</title>
+            <style>
+              html, body {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                height: 100%;
+              }
+              body {
+                font-family: 'Arial', sans-serif;
+                color: #333;
+              }
+            </style>
+          </head>
+          <body>
+            ${quoteHtml}
+          </body>
+        </html>
+      `;
+
+      await page.setContent(fullHtmlContent, {
+        waitUntil: 'domcontentloaded',
+        timeout: 45000,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: {
+          top: '10mm',
+          right: '10mm',
+          bottom: '10mm',
+          left: '10mm',
+        },
+        preferCSSPageSize: true,
+      });
+
+      await browser.close();
+
+      this.logger.log('Fallback PDF generated successfully');
+      return Buffer.from(pdfBuffer);
+    } catch (error) {
+      this.logger.error('Fallback PDF generation failed:', error);
+
+      if (browser) {
+        try {
+          await browser.close();
+        } catch (closeError) {
+          this.logger.warn('Failed to close browser in fallback:', closeError);
+        }
+      }
+
+      throw error;
     }
   }
 
