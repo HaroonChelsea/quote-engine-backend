@@ -17,7 +17,7 @@ export const quoteProducts = pgTable('quote_products', {
     .references(() => quotes.id, { onDelete: 'cascade' })
     .notNull(),
   productId: integer('product_id')
-    .references(() => products.id, { onDelete: 'cascade' })
+    .references(() => products.id, { onDelete: 'restrict' })
     .notNull(),
 
   // Product details at time of quote creation

@@ -166,6 +166,126 @@ export class QuotesService {
         );
         this.logger.log(`Variant match result:`, variantMatch);
 
+        // 2.5. Identify addon options and get their Shopify variant IDs
+        // Identify addon and custom options to include in the order
+        const addonOptions = dto.selectedProducts[0].selectedOptions.filter(
+          (option) => option.groupType === 'ADDON',
+        );
+        const customOptions = dto.selectedProducts[0].selectedOptions.filter(
+          (option) => option.groupType === 'CUSTOM',
+        );
+
+        this.logger.log(
+          `Found ${addonOptions.length} addon options and ${customOptions.length} custom options:`,
+          { addonOptions, customOptions },
+        );
+
+        const addons: Array<{
+          variantId: string;
+          quantity: number;
+          price: string;
+          name: string;
+        }> = [];
+
+        // Process ADDON options (these are related products with shopifyProductId)
+        for (const addonOption of addonOptions) {
+          // Get the option details to find Shopify product ID
+          const optionDetails =
+            await this.database.query.productOptions.findFirst({
+              where: eq(fullSchema.productOptions.id, addonOption.id),
+            });
+
+          if (optionDetails?.shopifyProductId) {
+            // For addons, we need to get the default variant of the addon product
+            // We'll need to fetch the product's default variant from Shopify
+            try {
+              this.logger.log(
+                `Original shopifyProductId for ${addonOption.name}: ${optionDetails.shopifyProductId}`,
+              );
+
+              // Ensure the product ID has the correct format (avoid double prefixing)
+              let productId = optionDetails.shopifyProductId;
+              if (
+                productId.includes(
+                  'gid://shopify/Product/gid://shopify/Product/',
+                )
+              ) {
+                // Fix double prefixing
+                productId = productId.replace(
+                  'gid://shopify/Product/gid://shopify/Product/',
+                  'gid://shopify/Product/',
+                );
+                this.logger.log(`Fixed double prefixing: ${productId}`);
+              } else if (!productId.startsWith('gid://shopify/Product/')) {
+                // Add prefix if missing
+                productId = `gid://shopify/Product/${productId}`;
+                this.logger.log(`Added missing prefix: ${productId}`);
+              } else {
+                this.logger.log(
+                  `Product ID already has correct format: ${productId}`,
+                );
+              }
+
+              // The Shopify service adds the gid://shopify/Product/ prefix, so we need to pass just the ID
+              const productIdForShopify = productId.replace(
+                'gid://shopify/Product/',
+                '',
+              );
+              this.logger.log(
+                `Final productId being passed to getProduct: ${productIdForShopify}`,
+              );
+              const addonProductResponse =
+                await this.shopifyService.getProduct(productIdForShopify);
+
+              if (addonProductResponse?.product?.variants?.edges?.length > 0) {
+                const defaultVariant =
+                  addonProductResponse.product.variants.edges[0].node;
+                addons.push({
+                  variantId: defaultVariant.id,
+                  quantity: 1, // Addons are typically quantity 1
+                  price: addonOption.price,
+                  name: addonOption.name,
+                });
+                this.logger.log(
+                  `Addon ${addonOption.name} mapped to Shopify variant: ${defaultVariant.id}`,
+                );
+              } else {
+                this.logger.warn(
+                  `Addon ${addonOption.name} has no variants in Shopify product ${optionDetails.shopifyProductId}`,
+                );
+              }
+            } catch (error) {
+              this.logger.error(
+                `Failed to fetch Shopify product for addon ${addonOption.name}: ${error.message}`,
+              );
+              // Continue processing other addons even if one fails
+              // The addon will be skipped but won't break the entire order creation
+            }
+          } else {
+            this.logger.warn(
+              `Addon ${addonOption.name} has no Shopify product ID`,
+            );
+          }
+        }
+
+        // Process CUSTOM options (manually linked global options)
+        const customLineItems: Array<{
+          name: string;
+          price: string;
+          quantity: number;
+        }> = [];
+
+        for (const customOption of customOptions) {
+          customLineItems.push({
+            name: customOption.name,
+            price: customOption.price,
+            quantity: 1, // Custom options are typically quantity 1
+          });
+          this.logger.log(
+            `Custom option ${customOption.name} will be included as custom line item`,
+          );
+        }
+
         // 3. Create Shopify draft order if we have both customer and variant
         let shopifyDraftOrderId: string | null = null;
         this.logger.log(
@@ -181,6 +301,8 @@ export class QuotesService {
             dto.selectedProducts[0].quantity,
             variantMatch.price,
             dto.shippingInfo,
+            addons,
+            customLineItems,
           );
           this.logger.log(
             `Draft order created with ID: ${shopifyDraftOrderId}`,
@@ -773,23 +895,74 @@ export class QuotesService {
     quantity: number,
     price: string,
     shippingInfo?: { method?: string; cost?: string; estimatedDays?: string },
+    addons?: Array<{
+      variantId: string;
+      quantity: number;
+      price: string;
+      name: string;
+    }>,
+    customOptions?: Array<{
+      name: string;
+      price: string;
+      quantity: number;
+    }>,
   ): Promise<string | null> {
     try {
       this.logger.log(
         `Creating Shopify draft order for customer ${customerId}, variant ${variantId}`,
       );
 
+      // Build line items array with main product and addons
+      const lineItems: any[] = [
+        {
+          variantId,
+          quantity,
+          originalUnitPrice: price,
+        },
+      ];
+
+      // Add addon products as separate line items
+      if (addons && addons.length > 0) {
+        this.logger.log(
+          `Adding ${addons.length} addon products to draft order`,
+        );
+        addons.forEach((addon) => {
+          lineItems.push({
+            variantId: addon.variantId,
+            quantity: addon.quantity,
+            originalUnitPrice: addon.price,
+          });
+          this.logger.log(`Added addon: ${addon.name} (${addon.variantId})`);
+        });
+      }
+
+      // Add custom options as custom line items
+      if (customOptions && customOptions.length > 0) {
+        this.logger.log(
+          `Adding ${customOptions.length} custom options to draft order`,
+        );
+        customOptions.forEach((customOption) => {
+          lineItems.push({
+            title: customOption.name,
+            quantity: customOption.quantity,
+            originalUnitPrice: customOption.price,
+            requiresShipping: false, // Custom options typically don't require shipping
+          });
+          this.logger.log(`Added custom option: ${customOption.name}`);
+        });
+      }
+
       const draftOrderData: any = {
         customerId,
-        lineItems: [
-          {
-            variantId,
-            quantity,
-            originalUnitPrice: price,
-          },
-        ],
+        lineItems,
         useCustomerDefaultAddress: true,
       };
+
+      this.logger.log(`Creating draft order with customer ID: ${customerId}`);
+      this.logger.log(
+        `Draft order data:`,
+        JSON.stringify(draftOrderData, null, 2),
+      );
 
       // Add shipping information if provided
       if (shippingInfo?.cost && parseFloat(shippingInfo.cost) > 0) {
@@ -873,6 +1046,7 @@ export class QuotesService {
             cost: quote.shippingCost || undefined,
             estimatedDays: quote.shippingEstimatedDays || undefined,
           },
+          [], // TODO: Get addons from quote data
         );
       }
 

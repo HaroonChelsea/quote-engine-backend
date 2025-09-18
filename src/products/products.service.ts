@@ -8,6 +8,7 @@ import {
   productOptionGroups,
   productOptions,
 } from './product-option-groups.schema';
+import { fullSchema } from '../database/database.module';
 
 @Injectable()
 export class ProductsService {
@@ -130,6 +131,21 @@ export class ProductsService {
     displayOrder?: number;
     description?: string;
   }) {
+    // Check if option group already exists
+    const existingGroup = await this.db.query.productOptionGroups.findFirst({
+      where: and(
+        eq(productOptionGroups.productId, groupData.productId),
+        eq(productOptionGroups.name, groupData.name),
+      ),
+    });
+
+    if (existingGroup) {
+      this.logger.log(
+        `Option group already exists: ${groupData.name} for product ${groupData.productId}`,
+      );
+      return existingGroup;
+    }
+
     this.logger.log(
       `Creating option group: ${groupData.name} for product ${groupData.productId}`,
     );
@@ -153,6 +169,22 @@ export class ProductsService {
     shopifyProductId?: string;
     shopifySku?: string;
   }) {
+    // Check if option already exists
+    const existingOption = await this.db.query.productOptions.findFirst({
+      where: and(
+        eq(
+          productOptions.productOptionGroupId,
+          optionData.productOptionGroupId,
+        ),
+        eq(productOptions.name, optionData.name),
+      ),
+    });
+
+    if (existingOption) {
+      this.logger.log(`Option already exists: ${optionData.name}`);
+      return existingOption;
+    }
+
     this.logger.log(`Creating option: ${optionData.name}`);
 
     const result = await this.db
@@ -372,5 +404,139 @@ export class ProductsService {
     }
 
     return result[0];
+  }
+
+  async linkOptions(productId: number, optionIds: number[]) {
+    this.logger.log(
+      `Linking ${optionIds.length} global options to product ${productId}`,
+    );
+
+    // Verify product exists
+    const product = await this.db.query.products.findFirst({
+      where: eq(products.id, productId),
+    });
+
+    if (!product) {
+      throw new Error(`Product with ID ${productId} not found`);
+    }
+
+    // Get the global options and their groups
+    const globalOptions = await this.db.query.options.findMany({
+      where: (options: any, { inArray }: any) => inArray(options.id, optionIds),
+      with: {
+        group: true,
+      },
+    });
+
+    if (globalOptions.length !== optionIds.length) {
+      throw new Error('Some option IDs were not found');
+    }
+
+    // First, remove only the manually linked (CUSTOM type) options for this product
+    this.logger.log(
+      `Removing existing manually linked options for product ${productId}`,
+    );
+
+    // Get only CUSTOM type product option groups for this product (manually linked)
+    const existingCustomGroups =
+      await this.db.query.productOptionGroups.findMany({
+        where: and(
+          eq(productOptionGroups.productId, productId),
+          eq(productOptionGroups.type, 'CUSTOM'),
+        ),
+      });
+
+    // Delete only the manually linked product options and groups
+    for (const group of existingCustomGroups) {
+      await this.db
+        .delete(productOptions)
+        .where(eq(productOptions.productOptionGroupId, group.id));
+
+      await this.db
+        .delete(productOptionGroups)
+        .where(eq(productOptionGroups.id, group.id));
+    }
+
+    // If no options provided, we're done (all manually linked options removed)
+    if (optionIds.length === 0) {
+      this.logger.log(
+        `Successfully removed all manually linked options for product ${productId}`,
+      );
+      return {
+        productId,
+        linkedOptions: [],
+        message: `Successfully linked 0 options to product ${productId}`,
+      };
+    }
+
+    // Group options by their option group
+    const optionsByGroup = globalOptions.reduce(
+      (acc, option) => {
+        const groupId = option.groupId;
+        if (!acc[groupId]) {
+          acc[groupId] = {
+            group: option.group,
+            options: [],
+          };
+        }
+        acc[groupId].options.push(option);
+        return acc;
+      },
+      {} as Record<number, { group: any; options: any[] }>,
+    );
+
+    const results: any[] = [];
+
+    // Create product option groups and options for each global option group
+    for (const [groupId, groupData] of Object.entries(optionsByGroup)) {
+      const { group, options } = groupData as { group: any; options: any[] };
+
+      // Create new product option group (CUSTOM type for manually linked global options)
+      const [newGroup] = await this.db
+        .insert(productOptionGroups)
+        .values({
+          productId,
+          name: group.name,
+          type: 'CUSTOM', // Always CUSTOM for manually linked global options
+          isRequired: false,
+          isMultiSelect: group.type === 'MULTI_SELECT',
+          displayOrder: 0,
+          description: group.description,
+        })
+        .returning();
+
+      this.logger.log(
+        `Created product option group: ${group.name} for product ${productId}`,
+      );
+
+      // Create product options for each global option
+      for (const option of options) {
+        const [newOption] = await this.db
+          .insert(productOptions)
+          .values({
+            productOptionGroupId: newGroup.id,
+            name: option.title,
+            price: option.price.toString(),
+            description: null,
+            isAvailable: true,
+            displayOrder: 0,
+          })
+          .returning();
+
+        results.push(newOption);
+        this.logger.log(
+          `Created product option: ${option.title} for product ${productId}`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Successfully linked ${results.length} options to product ${productId}`,
+    );
+    return {
+      productId,
+      linkedOptions: results,
+      message: `Successfully linked ${results.length} options to product ${productId}`,
+    };
   }
 }

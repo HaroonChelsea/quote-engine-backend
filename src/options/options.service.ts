@@ -15,9 +15,16 @@ export class OptionsService {
   ) {}
 
   async createGroup(dto: CreateOptionGroupDto) {
+    const valuesToInsert = {
+      name: dto.name,
+      type: dto.type,
+      step: dto.step || 2, // Default to step 2 if not provided
+      description: dto.description,
+    };
+
     return this.database
       .insert(fullSchema.optionGroups)
-      .values(dto)
+      .values(valuesToInsert)
       .returning();
   }
 

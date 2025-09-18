@@ -264,16 +264,16 @@ const createLocalProductsWithOptions = async (shopifyProducts) => {
 
     localProducts.push(createdProduct);
 
-    // Step 2: Create product-specific option groups
+    // Step 2: Check for existing option groups and create only if needed
     const optionGroups = await createProductOptionGroups(
       createdProduct.id,
       product,
     );
 
-    // Step 3: Create product-specific options for each group
+    // Step 3: Create product-specific options for each group (only if needed)
     await createProductOptions(createdProduct.id, product, optionGroups);
 
-    // Step 4: Create addon options if any
+    // Step 4: Create addon options if any (only if needed)
     await createProductAddonOptions(createdProduct.id, product);
   }
 
@@ -283,7 +283,40 @@ const createLocalProductsWithOptions = async (shopifyProducts) => {
 const createProductOptionGroups = async (productId, shopifyProduct) => {
   const optionGroups = [];
 
+  // First, get existing option groups for this product
+  let existingGroups = [];
+  try {
+    const existingResponse = await fetch(
+      `http://localhost:3001/products/${productId}/with-options`,
+    );
+    if (existingResponse.ok) {
+      const productData = await existingResponse.json();
+      existingGroups = productData.optionGroups || [];
+      console.log(
+        `   🔍 Found ${existingGroups.length} existing option groups`,
+      );
+    }
+  } catch (error) {
+    console.log(
+      `   ⚠️  Could not fetch existing option groups: ${error.message}`,
+    );
+  }
+
   for (const option of shopifyProduct.options) {
+    // Check if option group already exists
+    const existingGroup = existingGroups.find(
+      (group) => group.name === option.name,
+    );
+
+    if (existingGroup) {
+      console.log(`   ♻️  Using existing option group: ${option.name}`);
+      optionGroups.push({
+        ...existingGroup,
+        originalOption: option, // Store original Shopify option data
+      });
+      continue;
+    }
+
     // Determine option group type based on name
     let type = 'CUSTOM';
     const optionName = option.name.toLowerCase();
@@ -342,7 +375,18 @@ const createProductOptions = async (
   for (const group of optionGroups) {
     const option = group.originalOption;
 
+    // Get existing options for this group
+    const existingOptions = group.options || [];
+
     for (const value of option.values) {
+      // Check if option already exists
+      const existingOption = existingOptions.find((opt) => opt.title === value);
+
+      if (existingOption) {
+        console.log(`   ♻️  Using existing option: ${value}`);
+        continue;
+      }
+
       // Find the corresponding variant to get pricing
       // Since variants don't have selectedOptions in this API response,
       // we'll match by variant title (which contains the color name)
@@ -419,34 +463,62 @@ const createProductAddonOptions = async (productId, shopifyProduct) => {
     return;
   }
 
-  // Create addon option group
-  const addonGroupData = {
-    name: 'Addons',
-    type: 'ADDON',
-    isRequired: false,
-    isMultiSelect: true,
-    displayOrder: 999,
-    description: 'Optional addon products',
-  };
-
-  const groupResponse = await fetch(
-    `http://localhost:3001/products/${productId}/option-groups`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(addonGroupData),
-    },
-  );
-
-  if (!groupResponse.ok) {
-    console.log(
-      `   ❌ Failed to create addon option group for ${shopifyProduct.title}`,
+  // Check if addon option group already exists
+  let addonGroup = null;
+  try {
+    const existingResponse = await fetch(
+      `http://localhost:3001/products/${productId}/with-options`,
     );
-    return;
+    if (existingResponse.ok) {
+      const productData = await existingResponse.json();
+      const existingGroups = productData.optionGroups || [];
+      addonGroup = existingGroups.find((group) => group.name === 'Addons');
+
+      if (addonGroup) {
+        console.log(
+          `   ♻️  Using existing addon option group for ${shopifyProduct.title}`,
+        );
+      }
+    }
+  } catch (error) {
+    console.log(
+      `   ⚠️  Could not fetch existing option groups: ${error.message}`,
+    );
   }
 
-  const addonGroup = await groupResponse.json();
-  console.log(`   ✅ Created addon option group for ${shopifyProduct.title}`);
+  // Create addon option group if it doesn't exist
+  if (!addonGroup) {
+    const addonGroupData = {
+      name: 'Addons',
+      type: 'ADDON',
+      isRequired: false,
+      isMultiSelect: true,
+      displayOrder: 999,
+      description: 'Optional addon products',
+    };
+
+    const groupResponse = await fetch(
+      `http://localhost:3001/products/${productId}/option-groups`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addonGroupData),
+      },
+    );
+
+    if (!groupResponse.ok) {
+      console.log(
+        `   ❌ Failed to create addon option group for ${shopifyProduct.title}`,
+      );
+      return;
+    }
+
+    addonGroup = await groupResponse.json();
+    console.log(`   ✅ Created addon option group for ${shopifyProduct.title}`);
+  }
+
+  // Get existing addon options
+  const existingAddonOptions = addonGroup.options || [];
 
   // Fetch addon product details and create options
   for (const addonId of addonProductIds) {
@@ -483,6 +555,16 @@ const createProductAddonOptions = async (productId, shopifyProduct) => {
         const addonData = await addonProduct.json();
         if (addonData.data?.product) {
           const product = addonData.data.product;
+
+          // Check if addon option already exists
+          const existingAddonOption = existingAddonOptions.find(
+            (opt) => opt.title === product.title,
+          );
+
+          if (existingAddonOption) {
+            console.log(`   ♻️  Using existing addon option: ${product.title}`);
+            continue;
+          }
 
           const optionData = {
             name: product.title,

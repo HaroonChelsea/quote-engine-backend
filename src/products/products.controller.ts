@@ -11,6 +11,7 @@ import {
 import { ProductsService } from './products.service';
 import { FindProductsDto } from './dto/find-products.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import { LinkOptionsDto } from './dto/link-options.dto';
 
 @Controller('products')
 export class ProductsController {
@@ -83,6 +84,14 @@ export class ProductsController {
     @Param('dimensionId') dimensionId: string,
   ) {
     return this.productsService.deleteProductDimension(Number(dimensionId));
+  }
+
+  @Post(':id/link-options')
+  linkOptions(@Param('id') id: string, @Body() linkOptionsDto: LinkOptionsDto) {
+    return this.productsService.linkOptions(
+      Number(id),
+      linkOptionsDto.optionIds,
+    );
   }
   // @Patch(':id')
   // update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {

@@ -10,7 +10,7 @@ export const optionGroupTypeEnum = pgEnum('option_group_type', [
 
 export const optionGroups = pgTable('option_groups', {
   id: serial('id').primaryKey(),
-  name: text('name').unique().notNull(),
+  name: text('name').notNull(),
   type: optionGroupTypeEnum('type').notNull(),
   step: integer('step').notNull().default(2), // Default to step 2 (product selection)
   description: text('description'),

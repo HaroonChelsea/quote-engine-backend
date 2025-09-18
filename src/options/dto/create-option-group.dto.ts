@@ -1,4 +1,10 @@
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsNumber,
+} from 'class-validator';
 
 export class CreateOptionGroupDto {
   @IsString()
@@ -7,4 +13,12 @@ export class CreateOptionGroupDto {
 
   @IsEnum(['SINGLE_SELECT', 'MULTI_SELECT'])
   type: 'SINGLE_SELECT' | 'MULTI_SELECT';
+
+  @IsOptional()
+  @IsNumber()
+  step?: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
 }
