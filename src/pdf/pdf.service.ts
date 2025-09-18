@@ -53,12 +53,23 @@ export class PdfService {
   private readonly logger = new Logger(PdfService.name);
 
   async generateQuotePdf(quoteData: QuotePdfData): Promise<Buffer> {
+    let browser;
     try {
       this.logger.log('Generating quote PDF with brand pages...');
 
-      const browser = await puppeteer.launch({
+      browser = await puppeteer.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu',
+        ],
+        timeout: 60000, // 60 second timeout for browser launch
       });
 
       const page = await browser.newPage();
@@ -117,7 +128,16 @@ export class PdfService {
         </html>
       `;
 
-      await page.setContent(fullHtmlContent, { waitUntil: 'networkidle0' });
+      // Set page timeout to prevent hanging
+      page.setDefaultTimeout(45000); // 45 seconds
+
+      await page.setContent(fullHtmlContent, {
+        waitUntil: 'domcontentloaded',
+        timeout: 45000,
+      });
+
+      // Wait a bit more for any dynamic content to load
+      await page.waitForTimeout(2000);
 
       // Generate PDF
       const pdfBuffer = await page.pdf({
@@ -138,6 +158,16 @@ export class PdfService {
       return Buffer.from(pdfBuffer);
     } catch (error) {
       this.logger.error('Failed to generate quote PDF:', error);
+
+      // Ensure browser is closed even if there's an error
+      if (browser) {
+        try {
+          await browser.close();
+        } catch (closeError) {
+          this.logger.warn('Failed to close browser:', closeError);
+        }
+      }
+
       throw new Error('Failed to generate PDF');
     }
   }
