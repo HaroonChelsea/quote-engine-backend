@@ -137,7 +137,7 @@ export class PdfService {
       });
 
       // Wait a bit more for any dynamic content to load
-      await page.waitForTimeout(2000);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Generate PDF
       const pdfBuffer = await page.pdf({
