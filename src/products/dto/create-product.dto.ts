@@ -20,6 +20,11 @@ export class CreateProductDto {
   @Min(0)
   basePrice: number;
 
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  unitPrice?: number; // Original price for discount calculation
+
   @IsString()
   @IsOptional()
   imageUrl?: string;

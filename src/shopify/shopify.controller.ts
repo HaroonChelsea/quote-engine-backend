@@ -134,6 +134,13 @@ export class ShopifyController {
                 status
                 productType
                 vendor
+                featuredImage {
+                  id
+                  url
+                  altText
+                  width
+                  height
+                }
                 priceRangeV2 {
                   minVariantPrice {
                     amount

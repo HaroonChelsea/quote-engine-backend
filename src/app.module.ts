@@ -9,6 +9,7 @@ import { OptionsModule } from './options/options.module';
 import { EmailModule } from './email/email.module';
 import { ShopifyModule } from './shopify/shopify.module';
 import { ShippingModule } from './shipping/shipping.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ShippingModule } from './shipping/shipping.module';
       isGlobal: true,
     }),
     DatabaseModule,
+    AuthModule,
     UserModule,
     CustomersModule,
     QuotesModule,

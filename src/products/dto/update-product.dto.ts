@@ -10,6 +10,11 @@ export class UpdateProductDto {
   @IsOptional()
   basePrice?: number;
 
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  unitPrice?: number;
+
   @IsString()
   @IsOptional()
   description?: string;

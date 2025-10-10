@@ -19,6 +19,26 @@ export interface ShopifyProductData {
   id: string;
   title: string;
   handle: string;
+  featuredImage?: {
+    id: string;
+    url: string;
+    altText?: string;
+    width?: number;
+    height?: number;
+  };
+  media?: {
+    edges: Array<{
+      node: {
+        id: string;
+        image?: {
+          url: string;
+          altText?: string;
+          width?: number;
+          height?: number;
+        };
+      };
+    }>;
+  };
   variants: {
     edges: Array<{
       node: {

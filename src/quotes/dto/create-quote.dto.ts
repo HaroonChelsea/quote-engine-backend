@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsIn,
   ValidateNested,
 } from 'class-validator';
 
@@ -126,6 +127,23 @@ class EmailMessageDto {
   message: string;
 }
 
+class DiscountDto {
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsNumber()
+  value: number;
+
+  @IsString()
+  @IsIn(['FIXED_AMOUNT', 'PERCENTAGE'])
+  valueType: 'FIXED_AMOUNT' | 'PERCENTAGE';
+
+  @IsString()
+  @IsOptional()
+  title?: string;
+}
+
 export class CreateQuoteDto {
   @IsObject()
   @ValidateNested()
@@ -148,6 +166,12 @@ export class CreateQuoteDto {
   @Type(() => EmailMessageDto)
   @IsOptional()
   emailMessage?: EmailMessageDto;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => DiscountDto)
+  @IsOptional()
+  discount?: DiscountDto;
 
   @IsNumber()
   @IsOptional()

@@ -44,6 +44,12 @@ export interface QuotePdfData {
     tax: number;
     finalTotal: number;
   };
+  discount?: {
+    description?: string;
+    value: number;
+    valueType: 'FIXED_AMOUNT' | 'PERCENTAGE';
+    title?: string;
+  };
   createdAt: Date;
   validUntil: Date;
 }
@@ -121,16 +127,17 @@ export class PdfService {
                }
                .brand-page {
                  width: 100%;
-                 height: 100vh;
+                 height: 70vh;
                  display: flex;
                  align-items: center;
                  justify-content: center;
                  background: white;
                  page-break-after: always;
+                 page-break-inside: avoid;
                }
                .brand-page img {
-                 max-width: 90%;
-                 max-height: 90%;
+                 max-width: 100%;
+                 max-height: 100%;
                  width: auto;
                  height: auto;
                  object-fit: contain;
@@ -369,13 +376,10 @@ export class PdfService {
               margin-bottom: 30px;
             }
             .quote-details {
-              display: flex;
-              justify-content: space-between;
               margin-bottom: 30px;
             }
-            .customer-info, .shipping-info {
-              flex: 1;
-              margin: 0 10px;
+            .customer-info {
+              max-width: 50%;
             }
             .section-title {
               font-size: 18px;
@@ -449,31 +453,6 @@ export class PdfService {
               <div class="info-row">
                 <span class="label">Phone:</span> ${quoteData.customerInfo.phone}
               </div>
-              <div class="info-row">
-                <span class="label">Address:</span> ${quoteData.customerInfo.address}
-              </div>
-              <div class="info-row">
-                <span class="label">City:</span> ${quoteData.customerInfo.city}, ${quoteData.customerInfo.state} ${quoteData.customerInfo.zip}
-              </div>
-              <div class="info-row">
-                <span class="label">Country:</span> ${quoteData.customerInfo.country}
-              </div>
-            </div>
-
-            <div class="shipping-info">
-              <div class="section-title">Shipping Information</div>
-              <div class="info-row">
-                <span class="label">Origin:</span> ${quoteData.shippingInfo.origin}
-              </div>
-              <div class="info-row">
-                <span class="label">Destination:</span> ${quoteData.shippingInfo.destination}
-              </div>
-              <div class="info-row">
-                <span class="label">Method:</span> ${quoteData.shippingInfo.method}
-              </div>
-              <div class="info-row">
-                <span class="label">Transit Time:</span> ${quoteData.shippingInfo.transitTime}
-              </div>
             </div>
           </div>
 
@@ -534,10 +513,23 @@ export class PdfService {
               <span>Shipping:</span>
               <span>$${quoteData.pricing.shipping.toLocaleString()}</span>
             </div>
-            <div class="pricing-row">
-              <span>Tax (8%):</span>
-              <span>$${quoteData.pricing.tax.toLocaleString()}</span>
-            </div>
+            ${
+              quoteData.discount && quoteData.discount.value > 0
+                ? `
+            <div class="pricing-row" style="color: #7c3aed;">
+              <span>
+                Discount${quoteData.discount.valueType === 'PERCENTAGE' ? ` (${quoteData.discount.value}%)` : ''}
+                ${quoteData.discount.description ? `<br><small style="color: #6b7280;">${quoteData.discount.description}</small>` : ''}
+              </span>
+              <span>-$${(quoteData.discount.valueType === 'PERCENTAGE'
+                ? ((quoteData.pricing.subtotal + quoteData.pricing.shipping) *
+                    quoteData.discount.value) /
+                  100
+                : quoteData.discount.value
+              ).toLocaleString()}</span>
+            </div>`
+                : ''
+            }
             <div class="pricing-row total-row">
               <span>Total:</span>
               <span>$${quoteData.pricing.finalTotal.toLocaleString()}</span>

@@ -104,6 +104,7 @@ export class ProductsService {
     title: string;
     description?: string;
     basePrice: string;
+    unitPrice?: number; // Original price for discount calculation
     imageUrl?: string;
     weightKg?: string;
     lengthCm?: string;
@@ -118,6 +119,43 @@ export class ProductsService {
       .insert(products)
       .values(productData)
       .returning();
+
+    return result[0];
+  }
+
+  async updateProduct(
+    productId: number,
+    productData: {
+      title?: string;
+      description?: string;
+      basePrice?: number;
+      unitPrice?: number;
+    },
+  ) {
+    this.logger.log(`Updating product ${productId}`);
+
+    // Build update object with only provided fields
+    const updateData: any = {};
+    if (productData.title !== undefined) updateData.title = productData.title;
+    if (productData.description !== undefined)
+      updateData.description = productData.description;
+    if (productData.basePrice !== undefined)
+      updateData.basePrice = productData.basePrice.toString();
+    if (productData.unitPrice !== undefined)
+      updateData.unitPrice = productData.unitPrice.toString();
+
+    const result = await this.db
+      .update(products)
+      .set({
+        ...updateData,
+        updatedAt: new Date(),
+      })
+      .where(eq(products.id, productId))
+      .returning();
+
+    if (result.length === 0) {
+      throw new Error(`Product with ID ${productId} not found`);
+    }
 
     return result[0];
   }
@@ -330,6 +368,7 @@ export class ProductsService {
         title: products.title,
         description: products.description,
         basePrice: products.basePrice,
+        unitPrice: products.unitPrice,
         imageUrl: products.imageUrl,
         isActive: products.isActive,
         createdAt: products.createdAt,
@@ -357,6 +396,7 @@ export class ProductsService {
         products.title,
         products.description,
         products.basePrice,
+        products.unitPrice,
         products.imageUrl,
         products.isActive,
         products.createdAt,
@@ -537,6 +577,74 @@ export class ProductsService {
       productId,
       linkedOptions: results,
       message: `Successfully linked ${results.length} options to product ${productId}`,
+    };
+  }
+
+  async cleanupDuplicateOptions() {
+    this.logger.log('Starting cleanup of duplicate product options...');
+
+    // Get all product options with their groups
+    const allOptions = await this.db
+      .select({
+        id: productOptions.id,
+        name: productOptions.name,
+        productOptionGroupId: productOptions.productOptionGroupId,
+        createdAt: productOptions.createdAt,
+        price: productOptions.price,
+      })
+      .from(productOptions)
+      .orderBy(asc(productOptions.productOptionGroupId), asc(productOptions.createdAt));
+
+    // Group options by optionGroupId and name
+    const optionsByGroup = new Map<string, typeof allOptions>();
+
+    for (const option of allOptions) {
+      const key = `${option.productOptionGroupId}-${option.name}`;
+      if (!optionsByGroup.has(key)) {
+        optionsByGroup.set(key, []);
+      }
+      optionsByGroup.get(key)!.push(option);
+    }
+
+    let duplicatesRemoved = 0;
+    let uniqueOptionsKept = 0;
+
+    // Find and remove duplicates
+    for (const [key, options] of optionsByGroup) {
+      if (options.length > 1) {
+        // Keep the oldest option (first one by createdAt)
+        const [keep, ...duplicates] = options;
+
+        this.logger.log(
+          `Found ${duplicates.length} duplicate(s) of option "${keep.name}" in group ${keep.productOptionGroupId}`,
+        );
+        this.logger.log(`  Keeping option ID ${keep.id} (created at ${keep.createdAt})`);
+
+        // Delete the duplicates
+        for (const duplicate of duplicates) {
+          this.logger.log(
+            `  Deleting duplicate option ID ${duplicate.id} (created at ${duplicate.createdAt})`,
+          );
+          await this.db
+            .delete(productOptions)
+            .where(eq(productOptions.id, duplicate.id));
+          duplicatesRemoved++;
+        }
+
+        uniqueOptionsKept++;
+      } else {
+        uniqueOptionsKept++;
+      }
+    }
+
+    this.logger.log(
+      `Cleanup complete: removed ${duplicatesRemoved} duplicates, kept ${uniqueOptionsKept} unique options`,
+    );
+
+    return {
+      duplicatesRemoved,
+      uniqueOptionsKept,
+      message: `Removed ${duplicatesRemoved} duplicate options, kept ${uniqueOptionsKept} unique options`,
     };
   }
 }

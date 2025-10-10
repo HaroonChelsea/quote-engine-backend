@@ -10,7 +10,8 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { customers } from 'src/customers/customers.schema';
-import { options } from 'src/options/options.schema';
+import { productOptions } from 'src/products/product-option-groups.schema';
+import { quoteProducts } from './quote-products.schema';
 
 export const quoteStatusEnum = pgEnum('quote_status', [
   'DRAFT',
@@ -44,6 +45,12 @@ export const quotes = pgTable('quotes', {
   shippingCost: numeric('shipping_cost', { precision: 10, scale: 2 }),
   shippingEstimatedDays: text('shipping_estimated_days'),
 
+  // Discount information
+  discountDescription: text('discount_description'),
+  discountValue: numeric('discount_value', { precision: 10, scale: 2 }),
+  discountValueType: text('discount_value_type'), // 'FIXED_AMOUNT' or 'PERCENTAGE'
+  discountTitle: text('discount_title'),
+
   // Shopify integration fields
   shopifyDraftOrderId: text('shopify_draft_order_id'),
   shopifyCustomerId: text('shopify_customer_id'),
@@ -70,6 +77,7 @@ export const quotesRelations = relations(quotes, ({ one, many }) => ({
     references: [customers.id],
   }),
   selectedOptions: many(quoteOptions),
+  quoteProducts: many(quoteProducts),
 }));
 
 export const quoteOptionsRelations = relations(quoteOptions, ({ one }) => ({
@@ -77,8 +85,8 @@ export const quoteOptionsRelations = relations(quoteOptions, ({ one }) => ({
     fields: [quoteOptions.quoteId],
     references: [quotes.id],
   }),
-  option: one(options, {
+  option: one(productOptions, {
     fields: [quoteOptions.optionId],
-    references: [options.id],
+    references: [productOptions.id],
   }),
 }));

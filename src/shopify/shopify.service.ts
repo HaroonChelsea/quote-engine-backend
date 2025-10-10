@@ -90,6 +90,28 @@ export class ShopifyService {
           status
           createdAt
           updatedAt
+          featuredImage {
+            id
+            url
+            altText
+            width
+            height
+          }
+          media(first: 10) {
+            edges {
+              node {
+                ... on MediaImage {
+                  id
+                  image {
+                    url
+                    altText
+                    width
+                    height
+                  }
+                }
+              }
+            }
+          }
           priceRangeV2 {
             minVariantPrice {
               amount

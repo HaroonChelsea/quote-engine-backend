@@ -15,6 +15,7 @@ export const products = pgTable('products', {
   title: text('title').notNull(),
   description: text('description'),
   basePrice: numeric('base_price', { precision: 10, scale: 2 }).notNull(),
+  unitPrice: numeric('unit_price', { precision: 10, scale: 2 }), // Original/actual price for discount calculation
   imageUrl: text('image_url'),
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow(),

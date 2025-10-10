@@ -114,6 +114,13 @@ const getAllShopifyProducts = async () => {
               productType
               vendor
               description
+              featuredImage {
+                id
+                url
+                altText
+                width
+                height
+              }
               priceRangeV2 {
                 minVariantPrice {
                   amount
@@ -206,6 +213,12 @@ const getAllShopifyProducts = async () => {
 const createLocalProductsWithOptions = async (shopifyProducts) => {
   const localProducts = [];
 
+  // Create database pool for updates
+  const { Pool } = require('pg');
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
   for (const product of shopifyProducts) {
     console.log(`\n   📦 Processing: ${product.title}`);
 
@@ -232,19 +245,52 @@ const createLocalProductsWithOptions = async (shopifyProducts) => {
 
     let createdProduct;
     if (existingProduct) {
-      // Use existing product
-      createdProduct = existingProduct;
-      console.log(`   ♻️  Using existing product: ${product.title}`);
+      // Update existing product with latest data (including imageUrl)
+      // IMPORTANT: Only update unit_price if it's currently NULL (preserve manual pricing)
+      try {
+        const minPrice = parseFloat(product.priceRangeV2.minVariantPrice.amount);
+
+        await pool.query(
+          `UPDATE products
+           SET title = $1,
+               description = $2,
+               image_url = $3,
+               unit_price = COALESCE(unit_price, $4)
+           WHERE id = $5`,
+          [
+            product.title,
+            product.description || '',
+            product.featuredImage?.url || null,
+            minPrice,
+            existingProduct.id,
+          ],
+        );
+        console.log(
+          `   ♻️  Updated existing product: ${product.title} (imageUrl: ${product.featuredImage?.url ? 'set' : 'null'}, unit_price: ${existingProduct.unitPrice ? 'preserved' : `set to $${minPrice}`})`,
+        );
+        createdProduct = {
+          ...existingProduct,
+          imageUrl: product.featuredImage?.url || null,
+        };
+      } catch (error) {
+        console.log(
+          `   ⚠️  Could not update product: ${error.message}, using existing`,
+        );
+        createdProduct = existingProduct;
+      }
     } else {
       // Create new product
       // For POS system: Always set base price to 0, variants contain actual prices
       const actualBasePrice = 0;
+      const minPrice = parseFloat(product.priceRangeV2.minVariantPrice.amount);
 
       const productData = {
         title: product.title,
         description: product.description || '',
         basePrice: actualBasePrice,
+        unitPrice: minPrice, // Set unit_price to the minimum variant price from Shopify
         shopifyId: product.id,
+        imageUrl: product.featuredImage?.url || null,
       };
 
       const productResponse = await fetch('http://localhost:3001/products', {
@@ -276,6 +322,9 @@ const createLocalProductsWithOptions = async (shopifyProducts) => {
     // Step 4: Create addon options if any (only if needed)
     await createProductAddonOptions(createdProduct.id, product);
   }
+
+  // Close the database pool
+  await pool.end();
 
   return localProducts;
 };
@@ -380,7 +429,7 @@ const createProductOptions = async (
 
     for (const value of option.values) {
       // Check if option already exists
-      const existingOption = existingOptions.find((opt) => opt.title === value);
+      const existingOption = existingOptions.find((opt) => opt.name === value);
 
       if (existingOption) {
         console.log(`   ♻️  Using existing option: ${value}`);
@@ -558,7 +607,7 @@ const createProductAddonOptions = async (productId, shopifyProduct) => {
 
           // Check if addon option already exists
           const existingAddonOption = existingAddonOptions.find(
-            (opt) => opt.title === product.title,
+            (opt) => opt.name === product.title,
           );
 
           if (existingAddonOption) {

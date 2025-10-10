@@ -75,7 +75,18 @@ export class QuotesService {
 
       // Add shipping cost to total
       const shippingCost = parseFloat(dto.shippingInfo?.cost || '0');
-      const totalAmount = productTotal + shippingCost;
+      let totalAmount = productTotal + shippingCost;
+
+      // Apply discount if provided
+      if (dto.discount && dto.discount.value > 0) {
+        if (dto.discount.valueType === 'PERCENTAGE') {
+          const discountAmount = (totalAmount * dto.discount.value) / 100;
+          totalAmount = totalAmount - discountAmount;
+        } else {
+          // FIXED_AMOUNT
+          totalAmount = Math.max(0, totalAmount - dto.discount.value);
+        }
+      }
 
       // Create the quote
       const [newQuote] = await this.database
@@ -91,6 +102,11 @@ export class QuotesService {
           shippingMethod: dto.shippingInfo?.method,
           shippingCost: dto.shippingInfo?.cost,
           shippingEstimatedDays: dto.shippingInfo?.estimatedDays,
+          // Store discount information
+          discountDescription: dto.discount?.description,
+          discountValue: dto.discount?.value?.toString(),
+          discountValueType: dto.discount?.valueType,
+          discountTitle: dto.discount?.title,
         })
         .returning();
 
@@ -303,6 +319,7 @@ export class QuotesService {
             dto.shippingInfo,
             addons,
             customLineItems,
+            dto.discount,
           );
           this.logger.log(
             `Draft order created with ID: ${shopifyDraftOrderId}`,
@@ -389,9 +406,14 @@ export class QuotesService {
         customer: true,
         selectedOptions: {
           with: {
-            option: true,
+            option: {
+              with: {
+                optionGroup: true,
+              },
+            },
           },
         },
+        quoteProducts: true,
       },
     });
   }
@@ -402,9 +424,14 @@ export class QuotesService {
         customer: true,
         selectedOptions: {
           with: {
-            option: true,
+            option: {
+              with: {
+                optionGroup: true,
+              },
+            },
           },
         },
+        quoteProducts: true,
       },
       orderBy: (quotes, { desc }) => [desc(quotes.createdAt)],
     });
@@ -626,8 +653,21 @@ export class QuotesService {
       (sum, product) => sum + parseFloat(product.totalPrice || '0'),
       0,
     );
-    const tax = productsSubtotal * 0.08;
-    const finalTotal = productsSubtotal + tax;
+
+    const shippingCost = parseFloat(quote.shippingCost || '0');
+    const subtotalWithShipping = productsSubtotal + shippingCost;
+
+    // Calculate discount amount
+    let discountAmount = 0;
+    if (quote.discountValue && parseFloat(quote.discountValue) > 0) {
+      if (quote.discountValueType === 'PERCENTAGE') {
+        discountAmount = (subtotalWithShipping * parseFloat(quote.discountValue)) / 100;
+      } else {
+        discountAmount = parseFloat(quote.discountValue);
+      }
+    }
+
+    const finalTotal = Math.max(0, subtotalWithShipping - discountAmount);
 
     return {
       quoteNumber: `Q-${quoteId}`,
@@ -667,16 +707,22 @@ export class QuotesService {
         origin: 'NO.12 HUASHAN RD, SHILOU TOWN, PANYU DISTRICT, GUANGZHOU',
         destination: `${quote.customer?.city || 'Unknown'}, ${quote.customer?.state || 'Unknown'}`,
         method: quote.shippingMethod || 'Standard Shipping',
-        estimatedCost: parseFloat(quote.shippingCost || '0'),
+        estimatedCost: shippingCost,
         transitTime: quote.shippingEstimatedDays || '5-10 business days',
       },
       pricing: {
         subtotal: productsSubtotal,
-        shipping: parseFloat(quote.shippingCost || '0'),
-        total: productsSubtotal + parseFloat(quote.shippingCost || '0'),
-        tax: tax,
-        finalTotal: finalTotal + parseFloat(quote.shippingCost || '0'),
+        shipping: shippingCost,
+        total: subtotalWithShipping,
+        tax: 0, // Tax removed as per business logic
+        finalTotal: finalTotal,
       },
+      discount: quote.discountValue && parseFloat(quote.discountValue) > 0 ? {
+        description: quote.discountDescription || undefined,
+        value: parseFloat(quote.discountValue),
+        valueType: quote.discountValueType as 'FIXED_AMOUNT' | 'PERCENTAGE',
+        title: quote.discountTitle || undefined,
+      } : undefined,
       createdAt: quote.createdAt || new Date(),
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
     };
@@ -906,6 +952,12 @@ export class QuotesService {
       price: string;
       quantity: number;
     }>,
+    discount?: {
+      description?: string;
+      value: number;
+      valueType: 'FIXED_AMOUNT' | 'PERCENTAGE';
+      title?: string;
+    },
   ): Promise<string | null> {
     try {
       this.logger.log(
@@ -972,6 +1024,22 @@ export class QuotesService {
         };
       }
 
+      // Add discount information if provided
+      if (discount && discount.value > 0) {
+        const defaultDescription = discount.valueType === 'PERCENTAGE'
+          ? `${discount.value}% discount`
+          : `$${discount.value} discount`;
+
+        draftOrderData.appliedDiscount = {
+          description: discount.description || defaultDescription,
+          value: discount.value,
+          valueType: discount.valueType,
+          amount: discount.value, // For FIXED_AMOUNT, this is the amount; for PERCENTAGE, Shopify calculates it
+          title: discount.title || discount.description || defaultDescription,
+        };
+        this.logger.log(`Adding discount to draft order:`, draftOrderData.appliedDiscount);
+      }
+
       const draftOrder =
         await this.shopifyService.createDraftOrder(draftOrderData);
 
@@ -1029,7 +1097,7 @@ export class QuotesService {
         quote.productId,
         quoteOptions.map((qo) => ({
           id: qo.optionId,
-          name: qo.option?.title || 'Unknown',
+          name: qo.option?.name || 'Unknown',
         })),
       );
 
