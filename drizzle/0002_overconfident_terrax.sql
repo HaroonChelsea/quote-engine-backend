@@ -1,1 +1,0 @@
-ALTER TABLE "products" ADD COLUMN "unit_price" numeric(10, 2);

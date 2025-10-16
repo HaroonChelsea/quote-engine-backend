@@ -83,6 +83,7 @@ CREATE TABLE "products" (
 	"title" text NOT NULL,
 	"description" text,
 	"base_price" numeric(10, 2) NOT NULL,
+	"unit_price" numeric(10, 2),
 	"image_url" text,
 	"is_active" boolean DEFAULT true,
 	"created_at" timestamp DEFAULT now(),
@@ -127,12 +128,26 @@ CREATE TABLE "quotes" (
 	"shipping_method" text,
 	"shipping_cost" numeric(10, 2),
 	"shipping_estimated_days" text,
+	"discount_description" text,
+	"discount_value" numeric(10, 2),
+	"discount_value_type" text,
+	"discount_title" text,
 	"shopify_draft_order_id" text,
 	"shopify_customer_id" text,
 	"shopify_variant_id" text,
 	"shopify_sync_status" "shopify_sync_status" DEFAULT 'PENDING',
 	"shopify_sync_error" text,
 	"shopify_synced_at" timestamp
+);
+--> statement-breakpoint
+CREATE TABLE "freightos_quotes" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"quote_id" integer NOT NULL,
+	"quote_url" text,
+	"average_price" numeric(10, 2),
+	"carrier_quotes" jsonb,
+	"created_at" timestamp DEFAULT now(),
+	"timestamp" timestamp DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE "quote_shipping_selections" (
@@ -232,6 +247,7 @@ ALTER TABLE "quote_products" ADD CONSTRAINT "quote_products_quote_id_quotes_id_f
 ALTER TABLE "quote_products" ADD CONSTRAINT "quote_products_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quote_options" ADD CONSTRAINT "quote_options_quote_id_quotes_id_fk" FOREIGN KEY ("quote_id") REFERENCES "public"."quotes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quotes" ADD CONSTRAINT "quotes_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "freightos_quotes" ADD CONSTRAINT "freightos_quotes_quote_id_quotes_id_fk" FOREIGN KEY ("quote_id") REFERENCES "public"."quotes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quote_shipping_selections" ADD CONSTRAINT "quote_shipping_selections_quote_id_quotes_id_fk" FOREIGN KEY ("quote_id") REFERENCES "public"."quotes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quote_shipping_selections" ADD CONSTRAINT "quote_shipping_selections_product_dimension_id_product_dimensions_id_fk" FOREIGN KEY ("product_dimension_id") REFERENCES "public"."product_dimensions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "shopify_addon_mappings" ADD CONSTRAINT "shopify_addon_mappings_product_mapping_id_shopify_product_mappings_id_fk" FOREIGN KEY ("product_mapping_id") REFERENCES "public"."shopify_product_mappings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

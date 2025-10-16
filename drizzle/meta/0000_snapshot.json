@@ -1,5 +1,5 @@
 {
-  "id": "04b67091-6fc0-4cb5-bc53-d7860fd5cb3e",
+  "id": "4590f8be-147a-4cc8-a359-ff81eec55b8c",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -521,6 +521,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "unit_price": {
+          "name": "unit_price",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "image_url": {
           "name": "image_url",
           "type": "text",
@@ -821,6 +827,30 @@
           "primaryKey": false,
           "notNull": false
         },
+        "discount_description": {
+          "name": "discount_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "discount_value": {
+          "name": "discount_value",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "discount_value_type": {
+          "name": "discount_value_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "discount_title": {
+          "name": "discount_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "shopify_draft_order_id": {
           "name": "shopify_draft_order_id",
           "type": "text",
@@ -873,6 +903,77 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.freightos_quotes": {
+      "name": "freightos_quotes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "quote_id": {
+          "name": "quote_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quote_url": {
+          "name": "quote_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "average_price": {
+          "name": "average_price",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "carrier_quotes": {
+          "name": "carrier_quotes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "freightos_quotes_quote_id_quotes_id_fk": {
+          "name": "freightos_quotes_quote_id_quotes_id_fk",
+          "tableFrom": "freightos_quotes",
+          "tableTo": "quotes",
+          "columnsFrom": [
+            "quote_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
